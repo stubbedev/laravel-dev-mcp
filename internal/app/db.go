@@ -97,6 +97,21 @@ func (p *Project) connFromConfig(ctx context.Context, connection string) (map[st
 	return nil, false
 }
 
+// openDBPinged opens a connection and verifies it is reachable. On any failure
+// the (possibly opened) handle is closed and a descriptive error returned; on
+// success the caller owns the handle and must Close it.
+func (p *Project) openDBPinged(ctx context.Context, connection string) (*sql.DB, string, string, error) {
+	db, driver, schema, err := p.openDB(ctx, connection)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, "", "", fmt.Errorf("could not connect to database: %w", err)
+	}
+	return db, driver, schema, nil
+}
+
 // resolveConnConfig returns the settings for one connection, preferring
 // config/database.php and falling back to a map synthesized from .env.
 func (p *Project) resolveConnConfig(ctx context.Context, connection string) map[string]any {

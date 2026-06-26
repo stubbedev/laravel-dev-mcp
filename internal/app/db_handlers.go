@@ -93,14 +93,11 @@ func dbSchema(ctx context.Context, req *mcp.CallToolRequest, args map[string]any
 		return toolResult{}, err
 	}
 	p.envName = argString(args, "env")
-	db, driver, schema, err := p.openDB(ctx, argString(args, "connection"))
+	db, driver, schema, err := p.openDBPinged(ctx, argString(args, "connection"))
 	if err != nil {
 		return toolResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	if err := db.PingContext(ctx); err != nil {
-		return toolResult{}, fmt.Errorf("could not connect to database: %w", err)
-	}
 
 	prefix := cfgStr(p.resolveConnConfig(ctx, argString(args, "connection")), "prefix")
 
@@ -154,14 +151,11 @@ func dbQuery(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 		return toolResult{}, err
 	}
 	p.envName = argString(args, "env")
-	db, _, _, err := p.openDB(ctx, argString(args, "connection"))
+	db, _, _, err := p.openDBPinged(ctx, argString(args, "connection"))
 	if err != nil {
 		return toolResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	if err := db.PingContext(ctx); err != nil {
-		return toolResult{}, fmt.Errorf("could not connect to database: %w", err)
-	}
 
 	res, err := queryRows(ctx, db, query)
 	if err != nil {

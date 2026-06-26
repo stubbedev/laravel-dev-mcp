@@ -113,14 +113,11 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 // telescope_entries (no Clockwork/Debugbar needed): the `request` entry gives
 // timing, and the `query` entries for that batch give the query breakdown + N+1.
 func profileTelescope(ctx context.Context, p *Project, args map[string]any, limit int) (toolResult, error) {
-	db, driver, _, err := p.openDB(ctx, p.telescopeConn(args))
+	db, driver, _, err := p.openDBPinged(ctx, p.telescopeConn(args))
 	if err != nil {
 		return toolResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	if err := db.PingContext(ctx); err != nil {
-		return toolResult{}, fmt.Errorf("could not connect to database: %w", err)
-	}
 	if !telescopeAvailable(ctx, db) {
 		return telescopeUnavailable(p), nil
 	}

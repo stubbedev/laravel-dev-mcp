@@ -239,14 +239,11 @@ func (p *Project) readTable(ctx context.Context, conn, table string, limit int) 
 	if !identRe.MatchString(table) {
 		return nil, fmt.Errorf("unsafe table name %q", table)
 	}
-	db, _, _, err := p.openDB(ctx, conn)
+	db, _, _, err := p.openDBPinged(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
-	if err := db.PingContext(ctx); err != nil {
-		return nil, fmt.Errorf("could not connect to database: %w", err)
-	}
 	//nolint:unqueryvet // generic table inspector: columns vary per table, name is validated by identRe
 	return queryRows(ctx, db, "SELECT * FROM "+table+" LIMIT "+strconv.Itoa(limit))
 }
