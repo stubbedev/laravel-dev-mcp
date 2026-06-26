@@ -54,17 +54,7 @@ func telescope(ctx context.Context, req *mcp.CallToolRequest, args map[string]an
 		return toolResult{}, err
 	}
 
-	conn := argString(args, "connection")
-	if conn == "" {
-		// Telescope's own storage connection (config/telescope.php); null means
-		// "use the default DB connection".
-		if v, found, _ := p.config("telescope.storage.database.connection"); found {
-			if s, ok := v.(string); ok {
-				conn = s
-			}
-		}
-	}
-	db, driver, _, err := p.openDB(ctx, conn)
+	db, driver, _, err := p.openDB(ctx, p.telescopeConn(args))
 	if err != nil {
 		return toolResult{}, err
 	}
@@ -192,18 +182,45 @@ func isSlowQuery(content any) bool {
 	return false
 }
 
+// telescopeConn resolves which DB connection holds Telescope's entries: the
+// explicit arg, else config/telescope.php's storage connection (null = default).
+func (p *Project) telescopeConn(args map[string]any) string {
+	if conn := argString(args, "connection"); conn != "" {
+		return conn
+	}
+	if v, found, _ := p.config("telescope.storage.database.connection"); found {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 func telescopePrune(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
 	p, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
-	hours := argClampInt(args, "hours", 24, 0)
-	out, err := p.runArtisan(ctx, "telescope:prune", fmt.Sprintf("--hours=%d", hours))
+	db, driver, _, err := p.openDB(ctx, p.telescopeConn(args))
 	if err != nil {
 		return toolResult{}, err
 	}
-	if strings.TrimSpace(out) == "" {
-		out = fmt.Sprintf("Pruned Telescope entries older than %d hours.", hours)
+	defer func() { _ = db.Close() }()
+	if err := db.PingContext(ctx); err != nil {
+		return toolResult{}, fmt.Errorf("could not connect to database: %w", err)
 	}
-	return textResult(out), nil
+	if !telescopeAvailable(ctx, db) {
+		return telescopeUnavailable(p), nil
+	}
+
+	hours := argClampInt(args, "hours", 24, 0)
+	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour).Format("2006-01-02 15:04:05")
+	// telescope_entries_tags has an ON DELETE CASCADE FK on entry_uuid, so
+	// deleting the entries clears their tags too.
+	res, err := db.ExecContext(ctx, rebind(driver, "DELETE FROM telescope_entries WHERE created_at < ?"), cutoff)
+	if err != nil {
+		return toolResult{}, err
+	}
+	n, _ := res.RowsAffected()
+	return textResult(fmt.Sprintf("Pruned %d Telescope entries older than %d hours.", n, hours)), nil
 }

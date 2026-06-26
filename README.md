@@ -13,9 +13,10 @@ into one binary — no PHP package to install in your app.
   (parsed via a PHP AST — no PHP execution), log files, and talks to the database
   directly (mysql / mariadb / pgsql / sqlite). Falls back to `php`/`php artisan`
   only where the live app is unavoidable: `routes`, `artisan`, `tinker`,
-  `telescope_prune`, named-route `absolute_url`, and `config`/`db_connections`
-  when a config uses array spreads or other dynamic code. `php` must be on `PATH`
-  (or set `LARAVEL_MCP_PHP`) for those.
+  named-route `absolute_url`, and `config`/`db_connections` when a config uses
+  array spreads or other dynamic code. `php` must be on `PATH` (or set
+  `LARAVEL_MCP_PHP`) for those. Everything else — including `telescope_prune`
+  (a direct `DELETE`) — is pure Go.
 - **Works without Telescope** — Telescope-backed tools degrade with a clear
   message; everything else keeps working.
 
