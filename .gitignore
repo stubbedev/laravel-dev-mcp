@@ -1,0 +1,6 @@
+/laravel-dev-mcp
+/dist/
+.direnv/
+.envrc.local
+*.swp
+result
