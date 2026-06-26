@@ -58,13 +58,14 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 	}
 	limit := argClampInt(args, "limit", 5, 50)
 	source := strings.ToLower(argString(args, "source"))
+	autoDetected := source == ""
 
 	clockwork := p.path("storage", "clockwork")
 	debugbar := p.path("storage", "debugbar")
 
 	// Auto-detect: prefer file-based profilers (cheap), else fall back to
 	// Telescope, which records the same data in the database when installed.
-	if source == "" {
+	if autoDetected {
 		switch {
 		case hasProfileData(clockwork, clockworkKeep):
 			source = "clockwork"
@@ -85,7 +86,11 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 		files = newestFiles(debugbar, debugbarKeep, limit)
 		parse = parseDebugbar
 	case "telescope":
-		return profileTelescope(ctx, p, args, limit)
+		res, err := profileTelescope(ctx, p, args, limit)
+		if err != nil && autoDetected {
+			return textResult("No profiler data found. Install Clockwork or Debugbar (they write to storage/clockwork or storage/debugbar), or install Telescope with a database connection. Pass source=telescope to see the underlying error."), nil
+		}
+		return res, err
 	default:
 		return toolErrResult("Refused: unknown source " + source + " (use clockwork, debugbar, or telescope)."), nil
 	}
