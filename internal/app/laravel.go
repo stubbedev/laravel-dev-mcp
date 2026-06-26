@@ -1,12 +1,14 @@
-package main
+package app
 
 import (
 	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +25,13 @@ import (
 // always re-read.
 type Project struct {
 	Root string // absolute filesystem path to the Laravel app
+
+	// envName selects which environment's variables resolve config and DB
+	// settings. Empty means the live app (.env). A name like "testing" overlays
+	// .env.<name> — and, for "testing", phpunit.xml's <env> entries — on top of
+	// .env, so the db tools can reach the test database. Set per call from the
+	// tool's `env` argument.
+	envName string
 
 	// evalLossy is set during a config eval when a dynamic construct (array
 	// spread, unresolved function call) was skipped, meaning the static result
@@ -129,11 +138,9 @@ func (p *Project) path(rel ...string) string {
 
 // ── .env ─────────────────────────────────────────────────────────────────────
 
-// envMap returns the project's parsed .env (cached, read-only). Missing file →
-// empty map. Only the project's own .env is consulted — never the server's
-// process environment — so config resolution stays isolated per root.
-func (p *Project) envMap() map[string]string {
-	v, err := loadCached(p.path(".env"), func(b []byte) (any, error) {
+// envFile parses one dotenv file (cached, read-only). Missing file → empty map.
+func (p *Project) envFile(name string) map[string]string {
+	v, err := loadCached(p.path(name), func(b []byte) (any, error) {
 		return parseDotEnv(b), nil
 	})
 	if err != nil {
@@ -141,6 +148,57 @@ func (p *Project) envMap() map[string]string {
 	}
 	m, _ := v.(map[string]string)
 	return m
+}
+
+// envMap returns the project's effective environment (cached, read-only). For
+// the default environment that is just .env. When envName is set, .env.<name>
+// overlays .env and — for "testing" — phpunit.xml's <env> entries overlay both,
+// mirroring how Laravel resolves config under tests. Only the project's own
+// files are consulted, never the server's process environment, so resolution
+// stays isolated per root.
+func (p *Project) envMap() map[string]string {
+	base := p.envFile(".env")
+	if p.envName == "" {
+		return base
+	}
+	merged := maps.Clone(base)
+	maps.Copy(merged, p.envFile(".env."+p.envName))
+	if p.envName == "testing" {
+		maps.Copy(merged, p.phpunitEnv())
+	}
+	return merged
+}
+
+// phpunitEnv reads the <php><env name=… value=…> overrides from phpunit.xml (or
+// phpunit.xml.dist) — the values Laravel applies when running the test suite.
+func (p *Project) phpunitEnv() map[string]string {
+	for _, name := range []string{"phpunit.xml", "phpunit.xml.dist"} {
+		if v, err := loadCached(p.path(name), parsePhpunitEnv); err == nil {
+			if m, ok := v.(map[string]string); ok && len(m) > 0 {
+				return m
+			}
+		}
+	}
+	return map[string]string{}
+}
+
+func parsePhpunitEnv(b []byte) (any, error) {
+	var doc struct {
+		Php struct {
+			Env []struct {
+				Name  string `xml:"name,attr"`
+				Value string `xml:"value,attr"`
+			} `xml:"env"`
+		} `xml:"php"`
+	}
+	if err := xml.Unmarshal(b, &doc); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(doc.Php.Env))
+	for _, e := range doc.Php.Env {
+		out[e.Name] = e.Value
+	}
+	return out, nil
 }
 
 // Env returns a .env value, falling back to def when missing or empty.

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	// Registered with database/sql for the connections db_query/db_schema open.
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"

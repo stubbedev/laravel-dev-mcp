@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -12,11 +12,12 @@ import (
 // maxQueryRows caps rows returned by db_query to keep results readable.
 const maxQueryRows = 500
 
-func dbConnections(ctx context.Context, req *mcp.CallToolRequest) (toolResult, error) {
+func dbConnections(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
 	p, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
+	p.envName = argString(args, "env")
 
 	// Prefer the fully-parsed config/database.php (lists every connection).
 	if dbcfg, found, cerr := p.config("database"); cerr == nil && found {
@@ -91,6 +92,7 @@ func dbSchema(ctx context.Context, req *mcp.CallToolRequest, args map[string]any
 	if err != nil {
 		return toolResult{}, err
 	}
+	p.envName = argString(args, "env")
 	db, driver, schema, err := p.openDB(ctx, argString(args, "connection"))
 	if err != nil {
 		return toolResult{}, err
@@ -151,6 +153,7 @@ func dbQuery(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 	if err != nil {
 		return toolResult{}, err
 	}
+	p.envName = argString(args, "env")
 	db, _, _, err := p.openDB(ctx, argString(args, "connection"))
 	if err != nil {
 		return toolResult{}, err

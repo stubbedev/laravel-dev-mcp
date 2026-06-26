@@ -1,10 +1,9 @@
-package main
+package app
 
 import (
 	"context"
 	"crypto/subtle"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -17,56 +16,6 @@ const (
 
 	sessionTTL = 30 * time.Minute
 )
-
-// httpAddr resolves the HTTP listen address. HTTP mode is enabled when --http
-// (optionally --http=addr) is passed or LARAVEL_MCP_HTTP_ADDR is set. A bare
-// --http or a truthy LARAVEL_MCP_HTTP uses defaultHTTPAddr. Returns "" for the
-// default stdio transport.
-func httpAddr() string {
-	args := os.Args[1:]
-	for i, a := range args {
-		switch a {
-		case "--http":
-			if next := args[i+1:]; len(next) > 0 && !strings.HasPrefix(next[0], "-") && strings.Contains(next[0], ":") {
-				return next[0]
-			}
-			return defaultHTTPAddr
-		default:
-			if v, ok := strings.CutPrefix(a, "--http="); ok {
-				if v != "" {
-					return v
-				}
-				return defaultHTTPAddr
-			}
-		}
-	}
-	if v := os.Getenv("LARAVEL_MCP_HTTP_ADDR"); v != "" {
-		return v
-	}
-	if truthy(os.Getenv("LARAVEL_MCP_HTTP")) {
-		return defaultHTTPAddr
-	}
-	return ""
-}
-
-// httpPath resolves the endpoint path (--http-path / LARAVEL_MCP_HTTP_PATH).
-func httpPath() string {
-	args := os.Args[1:]
-	for i, a := range args {
-		if a == "--http-path" {
-			if next := args[i+1:]; len(next) > 0 {
-				return ensureLeadingSlash(next[0])
-			}
-		}
-		if v, ok := strings.CutPrefix(a, "--http-path="); ok {
-			return ensureLeadingSlash(v)
-		}
-	}
-	if v := os.Getenv("LARAVEL_MCP_HTTP_PATH"); v != "" {
-		return ensureLeadingSlash(v)
-	}
-	return defaultHTTPPath
-}
 
 // authMiddleware enforces the bearer token (LARAVEL_MCP_TOKEN) when configured.
 // When no token is set it is a no-op, preserving the zero-config local flow.
@@ -103,9 +52,9 @@ func ensureLeadingSlash(p string) string {
 // single endpoint, with idle-session reaping. The handler exposes request
 // headers to tool handlers (header-pinned roots). Shuts down when ctx is
 // cancelled.
-func serveHTTP(ctx context.Context, srv *mcp.Server, addr, path string) error {
+func serveHTTP(ctx context.Context, getServer func(*http.Request) *mcp.Server, addr, path string) error {
 	handler := mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return srv },
+		getServer,
 		&mcp.StreamableHTTPOptions{SessionTimeout: sessionTTL},
 	)
 

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -138,7 +138,7 @@ func telescopeUnavailable(p *Project) toolResult {
 	if p.hasPackage("laravel/telescope") {
 		msg += "laravel/telescope is installed — run `php artisan migrate` and ensure TELESCOPE_ENABLED is on and the storage driver is 'database'."
 	} else {
-		msg += "laravel/telescope is not installed. Install it (composer require laravel/telescope) to use this tool. The other tools (db_query, read_logs, etc.) work without it."
+		msg += "laravel/telescope is not installed. Install it (composer require laravel/telescope) to use this tool. The other tools (db_query, logs, etc.) work without it."
 	}
 	return textResult(msg)
 }

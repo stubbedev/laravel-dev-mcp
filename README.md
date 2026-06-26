@@ -15,8 +15,9 @@ into one binary — no PHP package to install in your app.
   only where the live app is unavoidable: `routes`, `artisan`, `tinker`,
   named-route `absolute_url`, and `config`/`db_connections` when a config uses
   array spreads or other dynamic code. `php` must be on `PATH` (or set
-  `LARAVEL_MCP_PHP`) for those. Everything else — including `telescope_prune`
-  (a direct `DELETE`) — is pure Go.
+  `LARAVEL_MCP_PHP`) for those. `doctor` additionally shells to `composer audit`
+  when `composer` is present (skips cleanly otherwise). Everything else —
+  including `telescope_prune` (a direct `DELETE`) — is pure Go.
 - **Works without Telescope** — Telescope-backed tools degrade with a clear
   message; everything else keeps working.
 
@@ -81,15 +82,23 @@ Example MCP client config (stdio):
 
 ## Tools
 
+The tools are **gated**: only `laravel_debug` is exposed until it is called.
+Calling it reveals the rest for that session (per-session, so unrelated sessions
+stay uncluttered), and an MCP client that supports `tools/list_changed` picks
+them up automatically.
+
+- `laravel_debug` — reveal the tools below for the current session.
+
 Works on any Laravel app:
 
 - `app_info` — PHP/Laravel versions, env, installed composer packages.
+- `doctor` — health check: missing `.env`/`APP_KEY`, stale config/route/event caches (which silently ignore source & `.env` edits), DB connectivity, vulnerable composer packages (`composer audit`). Set `audit=false` to skip the network call.
 - `db_connections` — every configured connection (from `config/database.php`, passwords masked).
 - `db_schema` — list tables, or describe one table's columns/indexes/FKs (honors table prefix).
 - `db_query` — **read-only** SQL (SELECT/SHOW/EXPLAIN/DESCRIBE/WITH/PRAGMA only).
+  - The three `db_*` tools accept `env=testing` (or any env name) to target the **test database**: it overlays `.env.testing` and, for `testing`, `phpunit.xml` `<env>` entries over `.env` — matching how Laravel resolves config under tests.
 - `models` — discover Eloquent models across `app/`, `app/Modules/`, `Modules/`, `src/` (AST parse, no PHP run): table, fillable, casts, relationships.
-- `read_logs` / `last_error` — application log (`storage/logs/laravel.log`).
-- `browser_logs` — frontend log (`storage/logs/browser.log`), if present.
+- `logs` — application + frontend logs. `source=app` (default) tails the newest `laravel*.log` (resolved via `config/logging.php`, honoring a custom `LOG_CHANNEL`/path and daily rotation), filterable by `level`; `source=error` returns the last error-level entry; `source=browser` tails `storage/logs/browser.log`.
 - `routes` — `php artisan route:list`, filterable.
 - `config` — read any `config/*.php` value by dotted key (native AST parse, env-resolved, **secrets redacted**); falls back to PHP when a config uses array spreads / dynamic code so nothing is omitted; omit the key to list config files.
 - `absolute_url` — build a URL from `APP_URL` (path or named route).
