@@ -46,17 +46,18 @@
  },
  {
   "name": "profile",
-  "description": "Per-request profiling from Clockwork (storage/clockwork) or Debugbar (storage/debugbar) — whichever is recording. Returns recent requests with total time, a query breakdown, the slowest queries, and N+1 detection (statements that ran 2+ times after normalizing bound values). Pure file reads, no app boot; degrades cleanly when neither profiler is installed.",
+  "description": "Per-request profiling — total time, query breakdown, slowest queries, and N+1 detection (statements that ran 2+ times after normalizing bound values). Reads from Telescope (telescope_entries, grouped by request) or, when present, the Clockwork/Debugbar storage files. Auto-detects the source: Clockwork/Debugbar files if recording, else Telescope. No app boot; degrades cleanly when no profiler is available.",
   "inputSchema": {
    "type": "object",
    "properties": {
     "source": {
      "type": "string",
      "enum": [
+      "telescope",
       "clockwork",
       "debugbar"
      ],
-     "description": "Profiler to read. Default: auto-detect (prefers Clockwork)."
+     "description": "Profiler source. Default: auto-detect (Clockwork/Debugbar files, else Telescope)."
     },
     "limit": {
      "type": "number",
@@ -68,6 +69,10 @@
       "toon",
       "json"
      ]
+    },
+    "connection": {
+     "type": "string",
+     "description": "telescope source: DB connection holding telescope_entries. Default: config('telescope.storage.database.connection')."
     }
    }
   }

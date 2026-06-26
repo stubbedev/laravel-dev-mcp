@@ -62,7 +62,8 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 	clockwork := p.path("storage", "clockwork")
 	debugbar := p.path("storage", "debugbar")
 
-	// Auto-detect: prefer whichever profiler actually has recordings.
+	// Auto-detect: prefer file-based profilers (cheap), else fall back to
+	// Telescope, which records the same data in the database when installed.
 	if source == "" {
 		switch {
 		case hasProfileData(clockwork, clockworkKeep):
@@ -70,8 +71,7 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 		case hasProfileData(debugbar, debugbarKeep):
 			source = "debugbar"
 		default:
-			return textResult("No profiler data found. Install Clockwork (itsgoingd/clockwork) " +
-				"or Debugbar (barryvdh/laravel-debugbar) and make a request, then retry."), nil
+			source = "telescope"
 		}
 	}
 
@@ -84,8 +84,10 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 	case "debugbar":
 		files = newestFiles(debugbar, debugbarKeep, limit)
 		parse = parseDebugbar
+	case "telescope":
+		return profileTelescope(ctx, p, args, limit)
 	default:
-		return toolErrResult("Refused: unknown source " + source + " (use clockwork or debugbar)."), nil
+		return toolErrResult("Refused: unknown source " + source + " (use clockwork, debugbar, or telescope)."), nil
 	}
 	if len(files) == 0 {
 		return textResult("No " + source + " recordings in storage/" + source + "."), nil
@@ -105,6 +107,74 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 		Source   string       `json:"source"`
 		Requests []profileReq `json:"requests"`
 	}{source, reqs}), nil
+}
+
+// profileTelescope builds the same per-request profile from Telescope's
+// telescope_entries (no Clockwork/Debugbar needed): the `request` entry gives
+// timing, and the `query` entries for that batch give the query breakdown + N+1.
+func profileTelescope(ctx context.Context, p *Project, args map[string]any, limit int) (toolResult, error) {
+	db, driver, _, err := p.openDB(ctx, p.telescopeConn(args))
+	if err != nil {
+		return toolResult{}, err
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.PingContext(ctx); err != nil {
+		return toolResult{}, fmt.Errorf("could not connect to database: %w", err)
+	}
+	if !telescopeAvailable(ctx, db) {
+		return telescopeUnavailable(p), nil
+	}
+
+	reqRows, err := queryRows(ctx, db, rebind(driver,
+		"SELECT batch_id, content FROM telescope_entries WHERE type = 'request' ORDER BY sequence DESC LIMIT ?"), limit)
+	if err != nil {
+		return toolResult{}, err
+	}
+	if len(reqRows.Rows) == 0 {
+		return textResult("No Telescope request entries recorded yet. Make a request, then retry."), nil
+	}
+
+	order := make([]string, 0, len(reqRows.Rows))
+	byBatch := map[string]*profileReq{}
+	for _, row := range reqRows.Rows {
+		batch := fmt.Sprint(row[0])
+		m := asMap(decodeMaybe(fmt.Sprint(row[1])))
+		byBatch[batch] = &profileReq{
+			Source: "telescope", ID: batch,
+			Method: asStr(m["method"]), URI: asStr(m["uri"]),
+			Status: m["response_status"], DurationMs: asFloat(m["duration"]),
+		}
+		order = append(order, batch)
+	}
+
+	// Pull every query for those batches in one go, then group per request.
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(order)), ",")
+	qargs := make([]any, len(order))
+	for i, b := range order {
+		qargs[i] = b
+	}
+	qRows, err := queryRows(ctx, db, rebind(driver,
+		"SELECT batch_id, content FROM telescope_entries WHERE type = 'query' AND batch_id IN ("+placeholders+")"), qargs...)
+	if err != nil {
+		return toolResult{}, err
+	}
+	raws := map[string][]rawQuery{}
+	for _, row := range qRows.Rows {
+		batch := fmt.Sprint(row[0])
+		m := asMap(decodeMaybe(fmt.Sprint(row[1])))
+		raws[batch] = append(raws[batch], rawQuery{asStr(m["sql"]), asFloat(m["time"])}) // telescope time is ms
+	}
+
+	reqs := make([]profileReq, 0, len(order))
+	for _, b := range order {
+		pr := *byBatch[b]
+		pr.Queries = summarizeQueries(raws[b])
+		reqs = append(reqs, pr)
+	}
+	return jsonResult(ctx, struct {
+		Source   string       `json:"source"`
+		Requests []profileReq `json:"requests"`
+	}{"telescope", reqs}), nil
 }
 
 // ── source detection / file listing ──────────────────────────────────────────
