@@ -184,10 +184,12 @@ jobs:
           set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Formula/laravel-dev-mcp.rb; then
+          git add Formula/laravel-dev-mcp.rb
+          # --cached detects new (untracked) AND modified, unlike `git diff` which
+          # ignores untracked files (so the first-ever formula would be skipped).
+          if git diff --cached --quiet; then
             echo "Formula already up to date for ${VERSION}; nothing to do."
             exit 0
           fi
-          git add Formula/laravel-dev-mcp.rb
           git commit -m "laravel-dev-mcp ${VERSION}"
           git push
