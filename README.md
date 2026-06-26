@@ -93,6 +93,8 @@ Works on any Laravel app:
 
 - `app_info` — PHP/Laravel versions, env, installed composer packages.
 - `doctor` — health check: missing `.env`/`APP_KEY`, stale config/route/event caches (which silently ignore source & `.env` edits), DB connectivity, vulnerable composer packages (`composer audit`). Set `audit=false` to skip the network call.
+- `profile` — per-request profiling from **Clockwork** (`storage/clockwork`) or **Debugbar** (`storage/debugbar`), auto-detected: total time, query breakdown, slowest queries, and **N+1 detection** (statements that ran 2+ times after normalizing bound values). Pure file reads, no app boot.
+- `state` — live backend state. `kind=cache` reads a cache entry (value + TTL) or, without a `key`, store stats/sample keys; `kind=queue` reports pending + recent failed jobs with decoded payloads. Backends: database, **redis** (built-in client — no dependency), file. Honors `env=testing`.
 - `db_connections` — every configured connection (from `config/database.php`, passwords masked).
 - `db_schema` — list tables, or describe one table's columns/indexes/FKs (honors table prefix).
 - `db_query` — **read-only** SQL (SELECT/SHOW/EXPLAIN/DESCRIBE/WITH/PRAGMA only).

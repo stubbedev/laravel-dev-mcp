@@ -1,7 +1,7 @@
 [
  {
   "name": "laravel_debug",
-  "description": "Reveal this project's Laravel inspection tools for the current session. Call it yourself — without being asked and without the user naming any tool — the first time the work touches a Laravel app here: a 500 / exception / error to chase, logs to read, database rows or schema to look at, a route / controller / middleware question, a config or .env value to resolve, Eloquent models to map, queued or failed jobs, Telescope history, or a general \"why is this broken / is my local setup OK\" check. It unlocks: app_info, doctor, logs, db_query, db_schema, db_connections, routes, config, absolute_url, models, telescope, telescope_prune, artisan, docs_search. These stay hidden until you call it so unrelated sessions aren't cluttered; calling it again is harmless.",
+  "description": "Reveal this project's Laravel inspection tools for the current session. Call it yourself — without being asked and without the user naming any tool — the first time the work touches a Laravel app here: a 500 / exception / error to chase, logs to read, database rows or schema to look at, a route / controller / middleware question, a config or .env value to resolve, Eloquent models to map, queued or failed jobs, Telescope history, or a general \"why is this broken / is my local setup OK\" check. It unlocks: app_info, doctor, profile, state, logs, db_query, db_schema, db_connections, routes, config, absolute_url, models, telescope, telescope_prune, artisan, docs_search. These stay hidden until you call it so unrelated sessions aren't cluttered; calling it again is harmless.",
   "inputSchema": {
    "type": "object",
    "properties": {}
@@ -33,6 +33,78 @@
     "audit": {
      "type": "boolean",
      "description": "Run `composer audit` for dependency CVEs (network, slower). Default true."
+    },
+    "format": {
+     "type": "string",
+     "enum": [
+      "toon",
+      "json"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "profile",
+  "description": "Per-request profiling from Clockwork (storage/clockwork) or Debugbar (storage/debugbar) — whichever is recording. Returns recent requests with total time, a query breakdown, the slowest queries, and N+1 detection (statements that ran 2+ times after normalizing bound values). Pure file reads, no app boot; degrades cleanly when neither profiler is installed.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "source": {
+     "type": "string",
+     "enum": [
+      "clockwork",
+      "debugbar"
+     ],
+     "description": "Profiler to read. Default: auto-detect (prefers Clockwork)."
+    },
+    "limit": {
+     "type": "number",
+     "description": "Number of recent requests (default 5, max 50)."
+    },
+    "format": {
+     "type": "string",
+     "enum": [
+      "toon",
+      "json"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "state",
+  "description": "Inspect live backend state. kind=cache reads a cache entry (value + TTL) or, without a key, store stats/sample keys. kind=queue reports pending jobs and recent failed jobs with decoded payloads. Resolves the store/connection from config (cache/queue/database) and supports database, redis (built-in client, no key needed for a server), and file backends. Honors env=testing to target the test database.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "cache",
+      "queue"
+     ],
+     "description": "What to inspect: cache or queue. Required."
+    },
+    "key": {
+     "type": "string",
+     "description": "cache: the cache key to read. Omit for store stats."
+    },
+    "store": {
+     "type": "string",
+     "description": "cache: cache store name. Default: config('cache.default')."
+    },
+    "connection": {
+     "type": "string",
+     "description": "queue: queue connection name. Default: config('queue.default')."
+    },
+    "queue": {
+     "type": "string",
+     "description": "queue: queue name. Default: the connection's default queue."
+    },
+    "env": {
+     "type": "string",
+     "description": "Environment to resolve config from, e.g. 'testing'. Default: the live app (.env)."
     },
     "format": {
      "type": "string",

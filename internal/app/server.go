@@ -156,6 +156,10 @@ func runTool(ctx context.Context, req *mcp.CallToolRequest, name string, args ma
 		return models(ctx, req, args)
 	case "doctor":
 		return doctor(ctx, req, args)
+	case "profile":
+		return profile(ctx, req, args)
+	case "state":
+		return state(ctx, req, args)
 	case "telescope":
 		return telescope(ctx, req, args)
 	case "telescope_prune":
@@ -188,6 +192,8 @@ func buildInstructions() string {
 	w("## Tools")
 	w("- `laravel_debug` — unlock the tools below for this session (call first).")
 	w("- `doctor` — health-check: missing .env/APP_KEY, stale config/route/event caches, DB connectivity, vulnerable composer packages.")
+	w("- `profile` — per-request profiling from Clockwork/Debugbar: timing, query breakdown, slowest queries, N+1 detection.")
+	w("- `state` — live cache entries and queue/failed jobs (`kind=cache|queue`; database / redis / file backends).")
 	w("- `app_info` — PHP/Laravel versions and installed composer packages.")
 	w("- `db_connections` / `db_schema` / `db_query` — inspect the database directly (read-only SQL).")
 	w("- `models` — discover Eloquent models (table, fillable, casts, relationships) across app/, Modules/, src/.")
