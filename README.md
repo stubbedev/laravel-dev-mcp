@@ -11,8 +11,11 @@ into one binary — no PHP package to install in your app.
   serve many repos/worktrees.
 - **Go-native** where possible: reads `.env`, `composer.lock`, `config/*.php`
   (parsed via a PHP AST — no PHP execution), log files, and talks to the database
-  directly (mysql / mariadb / pgsql / sqlite). Shells out to `php artisan` only
-  where the live app is unavoidable (routes, tinker, telescope:prune).
+  directly (mysql / mariadb / pgsql / sqlite). Falls back to `php`/`php artisan`
+  only where the live app is unavoidable: `routes`, `artisan`, `tinker`,
+  `telescope_prune`, named-route `absolute_url`, and `config`/`db_connections`
+  when a config uses array spreads or other dynamic code. `php` must be on `PATH`
+  (or set `LARAVEL_MCP_PHP`) for those.
 - **Works without Telescope** — Telescope-backed tools degrade with a clear
   message; everything else keeps working.
 
@@ -70,7 +73,8 @@ Example MCP client config (stdio):
 | `LARAVEL_MCP_PHP` | `php` | PHP binary used for artisan shell-outs. |
 | `LARAVEL_MCP_TINKER` | unset | Set to `1` to expose the `tinker` tool (arbitrary PHP execution — off by default). |
 | `LARAVEL_MCP_HTTP_ADDR` | — | Enable HTTP on this address (or use `--http`). |
-| `LARAVEL_MCP_HTTP_PATH` | `/mcp` | HTTP endpoint path. |
+| `LARAVEL_MCP_HTTP` | — | Truthy (`1`/`true`) enables HTTP on the default `127.0.0.1:8765`. |
+| `LARAVEL_MCP_HTTP_PATH` | `/mcp` | HTTP endpoint path (`--http-path`). |
 | `LARAVEL_MCP_TOKEN` | — | If set, HTTP clients must send it as `Authorization: Bearer <token>` (or `X-Mcp-Token`). Ignored for stdio. |
 | `LARAVEL_MCP_DOCS_URL` | `https://boost.laravel.com` | Docs search backend. |
 
@@ -95,8 +99,9 @@ Works on any Laravel app:
 Requires Laravel Telescope (degrades gracefully when absent):
 
 - `telescope` — query telemetry by type (`requests`, `queries`, `exceptions`,
-  `jobs`, `mail`, `cache`, …), with filters like `slow`, `request_id`, `id`.
-- `telescope_prune` — delete old Telescope entries.
+  `jobs`, `mail`, `cache`, …), with filters `slow`, `since_hours`, `tag`,
+  `request_id`, and `id` (single entry).
+- `telescope_prune` — delete old Telescope entries (`hours`, default 24).
 
 ## Development
 
