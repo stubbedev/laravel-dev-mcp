@@ -88,7 +88,9 @@ func profile(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 	case "telescope":
 		res, err := profileTelescope(ctx, p, args, limit)
 		if err != nil && autoDetected {
-			return textResult("No profiler data found. Install Clockwork or Debugbar (they write to storage/clockwork or storage/debugbar), or install Telescope with a database connection. Pass source=telescope to see the underlying error."), nil
+			return textResult(
+				"No profiler data found. Install Clockwork or Debugbar (they write to storage/clockwork or storage/debugbar), or install Telescope with a database connection. Pass source=telescope to see the underlying error.",
+			), nil
 		}
 		return res, err
 	default:
