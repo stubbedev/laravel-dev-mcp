@@ -66,6 +66,33 @@ class Invoice extends BaseModel
 		t.Errorf("User relations = %v", u.Relations)
 	}
 
+	// Laravel 11 casts() method form.
+	mkdir(t, filepath.Join(dir, "app", "Models"))
+	write(t, filepath.Join(dir, "app", "Models", "Payment.php"), `<?php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
+class Payment extends Model
+{
+    protected $table = 'payments';
+    protected function casts(): array
+    {
+        return ['amount' => 'integer', 'paid_at' => 'datetime'];
+    }
+}
+`)
+	found = (&Project{Root: dir}).scanModels()
+	got = map[string]modelInfo{}
+	for _, m := range found {
+		got[m.Name] = m
+	}
+	pay, ok := got["Payment"]
+	if !ok {
+		t.Fatal("Payment model not found")
+	}
+	if pay.Casts["amount"] != "integer" || pay.Casts["paid_at"] != "datetime" {
+		t.Errorf("Payment casts() method not extracted: %v", pay.Casts)
+	}
+
 	inv, ok := got["Invoice"]
 	if !ok {
 		t.Fatal("Invoice model (modular) not found")

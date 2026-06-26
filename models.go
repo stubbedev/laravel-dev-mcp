@@ -195,7 +195,12 @@ func (p *Project) classToModel(c *ast.StmtClass, ns, file string) (modelInfo, bo
 				isModel = true
 			}
 		case *ast.StmtClassMethod:
-			if rel, ok := p.extractRelation(s); ok {
+			// Laravel 11+ defines casts via a casts() method; it takes
+			// precedence over a legacy $casts property.
+			if c, ok := p.extractCastsMethod(s); ok {
+				mi.Casts = c
+				isModel = true
+			} else if rel, ok := p.extractRelation(s); ok {
 				mi.Relations = append(mi.Relations, rel)
 				isModel = true
 			}
@@ -231,6 +236,28 @@ func (p *Project) applyModelProperty(mi *modelInfo, list *ast.StmtPropertyList) 
 		}
 	}
 	return matched
+}
+
+// extractCastsMethod reads a Laravel 11 `protected function casts(): array {
+// return [...]; }` body into a casts map.
+func (p *Project) extractCastsMethod(m *ast.StmtClassMethod) (map[string]string, bool) {
+	if !strings.EqualFold(identString(m.Name), "casts") {
+		return nil, false
+	}
+	body, ok := m.Stmt.(*ast.StmtStmtList)
+	if !ok {
+		return nil, false
+	}
+	for _, st := range body.Stmts {
+		ret, ok := st.(*ast.StmtReturn)
+		if !ok {
+			continue
+		}
+		if arr, ok := ret.Expr.(*ast.ExprArray); ok {
+			return toStrMap(p.evalArray(arr)), true
+		}
+	}
+	return nil, false
 }
 
 // extractRelation detects `return $this-><relation>(Related::class, ...)` method
