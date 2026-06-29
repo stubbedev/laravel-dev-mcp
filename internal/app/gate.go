@@ -95,10 +95,6 @@ func (ts *toolServer) activate() {
 		return
 	}
 	for _, d := range gatedTools {
-		// tinker runs arbitrary PHP; only expose it when explicitly enabled.
-		if d.Name == "tinker" && !cfg.TinkerEnabled {
-			continue
-		}
 		ts.srv.AddTool(toolFromDef(d), ts.onCall)
 	}
 }
@@ -117,9 +113,6 @@ func gateActivationText() string {
 	var b strings.Builder
 	b.WriteString("Laravel dev tools unlocked for this session:\n")
 	for _, d := range gatedTools {
-		if d.Name == "tinker" && !cfg.TinkerEnabled {
-			continue
-		}
 		b.WriteString("- ")
 		b.WriteString(d.Name)
 		b.WriteByte('\n')

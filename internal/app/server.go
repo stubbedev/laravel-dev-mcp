@@ -204,9 +204,7 @@ func buildInstructions() string {
 	w(
 		"- `telescope` — query Telescope telemetry (requests, queries, exceptions, jobs, …) when Telescope is installed; degrades cleanly when it is not. `telescope_prune` clears old entries.",
 	)
-	if cfg.TinkerEnabled {
-		w("- `tinker` — execute arbitrary PHP in the app context (enabled).")
-	}
+	w("- `tinker` — execute arbitrary PHP in the app context when laravel/tinker is installed; degrades cleanly when it is not.")
 	w("")
 	w("## Notes")
 	w("- `db_query` is read-only (SELECT/SHOW/EXPLAIN/DESCRIBE only).")

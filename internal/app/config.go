@@ -10,9 +10,6 @@ import (
 type Config struct {
 	// PHPBin is the php executable used to shell out to artisan. Default "php".
 	PHPBin string
-	// TinkerEnabled gates the `tinker` tool (arbitrary PHP execution). Off by
-	// default; enable with LARAVEL_MCP_TINKER=1.
-	TinkerEnabled bool
 	// DocsURL is the base URL for the docs_search proxy.
 	DocsURL string
 	// AuthToken, when set, requires HTTP clients to present it as a bearer token
@@ -22,10 +19,9 @@ type Config struct {
 
 func loadConfig() Config {
 	cfg := Config{
-		PHPBin:        envOr("LARAVEL_MCP_PHP", "php"),
-		TinkerEnabled: truthy(os.Getenv("LARAVEL_MCP_TINKER")),
-		DocsURL:       envOr("LARAVEL_MCP_DOCS_URL", "https://boost.laravel.com"),
-		AuthToken:     os.Getenv("LARAVEL_MCP_TOKEN"),
+		PHPBin:    envOr("LARAVEL_MCP_PHP", "php"),
+		DocsURL:   envOr("LARAVEL_MCP_DOCS_URL", "https://boost.laravel.com"),
+		AuthToken: os.Getenv("LARAVEL_MCP_TOKEN"),
 	}
 	return cfg
 }

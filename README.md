@@ -129,7 +129,6 @@ Example MCP client config (stdio):
 | Env var | Default | Purpose |
 |---|---|---|
 | `LARAVEL_MCP_PHP` | `php` | PHP binary used for artisan shell-outs. |
-| `LARAVEL_MCP_TINKER` | unset | Set to `1` to expose the `tinker` tool (arbitrary PHP execution — off by default). |
 | `LARAVEL_MCP_HTTP_ADDR` | — | Enable HTTP on this address (or use `--http`). |
 | `LARAVEL_MCP_HTTP` | — | Truthy (`1`/`true`) enables HTTP on the default `127.0.0.1:8765`. |
 | `LARAVEL_MCP_HTTP_PATH` | `/mcp` | HTTP endpoint path (`--http-path`). |
@@ -162,7 +161,7 @@ Works on any Laravel app:
 - `absolute_url` — build a URL from `APP_URL` (path or named route).
 - `artisan` — run allowlisted **read-only** artisan commands (`about`, `db:show`, `migrate:status`, `queue:failed`, `schedule:list`, `event:list`, …).
 - `docs_search` — search version-matched Laravel-ecosystem docs.
-- `tinker` — execute arbitrary PHP (opt-in via `LARAVEL_MCP_TINKER=1`).
+- `tinker` — execute arbitrary PHP in the app context (available when `laravel/tinker` is installed).
 
 Requires Laravel Telescope (degrades gracefully when absent):
 

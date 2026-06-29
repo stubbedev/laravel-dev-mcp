@@ -26,7 +26,7 @@
  },
  {
   "name": "doctor",
-  "description": "Health-check the local Laravel app and report what's likely broken: missing .env or empty APP_KEY, stale config/route/event caches (which silently ignore source and .env edits), database connectivity, and known-vulnerable composer packages (composer audit). Pure local checks; each degrades to a clear skip when php/composer/db are unavailable.",
+  "description": "Health-check the local Laravel app and report what's likely broken: missing .env or empty APP_KEY, stale config/route/event caches (which silently ignore source and .env edits), database connectivity, .env keys present in .env.example but missing from .env, pending migrations (schema lagging behind migration files), and known-vulnerable composer packages (composer audit). Pure local checks; each degrades to a clear skip when php/composer/db are unavailable.",
   "inputSchema": {
    "type": "object",
    "properties": {
@@ -202,7 +202,7 @@
  },
  {
   "name": "routes",
-  "description": "List the app's registered routes via `php artisan route:list --json`. Optionally filter by path, method, or route name (substring match).",
+  "description": "List the app's registered routes via `php artisan route:list --json`. Optionally filter by path, method, or route name (substring match). Each controller action also gets a best-effort `action_file` (relative path:line) resolved via composer PSR-4, for jumping straight to the handler.",
   "inputSchema": {
    "type": "object",
    "properties": {
@@ -324,7 +324,7 @@
  },
  {
   "name": "tinker",
-  "description": "Execute arbitrary PHP in the app context via `php artisan tinker --execute`. Returns stdout. Disabled by default; enable with LARAVEL_MCP_TINKER=1.",
+  "description": "Execute arbitrary PHP in the app context via `php artisan tinker --execute`. Returns stdout. Available when laravel/tinker is installed (degrades with a clear message otherwise).",
   "inputSchema": {
    "type": "object",
    "properties": {
@@ -363,7 +363,7 @@
  },
  {
   "name": "models",
-  "description": "Discover Eloquent models by parsing the app's PHP (no execution). Scans app/, Modules/, app/Modules/, and src/ for model classes regardless of namespace/folder. Omit `model` for a summary list; pass a name or class substring for full table, fillable, guarded, casts, and relationships.",
+  "description": "Discover Eloquent models by parsing the app's PHP (no execution). Scans app/, Modules/, app/Modules/, and src/ for model classes regardless of namespace/folder. Omit `model` for a summary list; pass a name or class substring for full table, fillable, guarded, casts, and relationships. Each model also reports its `factory` path when database/factories/<Name>Factory.php exists.",
   "inputSchema": {
    "type": "object",
    "properties": {

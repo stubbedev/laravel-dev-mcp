@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -47,7 +50,88 @@ func routes(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 		}
 		all = filtered
 	}
+
+	// Best-effort: resolve each controller action to a clickable file:line so the
+	// caller can jump straight to the handler. Closures/unresolvable actions are
+	// left untouched.
+	psr4 := p.psr4Map()
+	for _, r := range all {
+		if loc := p.resolveActionFile(psr4, fmt.Sprint(r["action"])); loc != "" {
+			r["action_file"] = loc
+		}
+	}
 	return jsonResult(ctx, all), nil
+}
+
+// psr4Map reads composer.json's PSR-4 autoload prefixes (both autoload and
+// autoload-dev) into namespace-prefix → relative-dir. Empty on any error.
+func (p *Project) psr4Map() map[string]string {
+	raw, err := os.ReadFile(p.path("composer.json"))
+	if err != nil {
+		return nil
+	}
+	var doc struct {
+		Autoload struct {
+			Psr4 map[string]string `json:"psr-4"`
+		} `json:"autoload"`
+		AutoloadDev struct {
+			Psr4 map[string]string `json:"psr-4"`
+		} `json:"autoload-dev"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	maps.Copy(out, doc.Autoload.Psr4)
+	maps.Copy(out, doc.AutoloadDev.Psr4)
+	return out
+}
+
+// resolveActionFile maps a route action ("App\\Http\\Controllers\\X@method" or
+// an invokable "App\\Http\\Controllers\\X") to "relative/path.php:line" using the
+// PSR-4 map. Returns "" for closures or anything it can't resolve.
+func (p *Project) resolveActionFile(psr4 map[string]string, action string) string {
+	if action == "" || !strings.Contains(action, "\\") {
+		return ""
+	}
+	class, method := action, "__invoke"
+	if at := strings.LastIndex(action, "@"); at >= 0 {
+		class, method = action[:at], action[at+1:]
+	}
+	// Longest matching PSR-4 prefix wins (e.g. App\Http\ over App\).
+	var bestPrefix, bestDir string
+	for prefix, dir := range psr4 {
+		if strings.HasPrefix(class, prefix) && len(prefix) > len(bestPrefix) {
+			bestPrefix, bestDir = prefix, dir
+		}
+	}
+	if bestPrefix == "" {
+		return ""
+	}
+	rel := filepath.Join(bestDir, strings.ReplaceAll(class[len(bestPrefix):], "\\", "/")+".php")
+	if fi, err := os.Stat(p.path(rel)); err != nil || fi.IsDir() {
+		return ""
+	}
+	line := scanFuncLine(p.path(rel), method)
+	if line == 0 {
+		return rel
+	}
+	return fmt.Sprintf("%s:%d", rel, line)
+}
+
+// scanFuncLine returns the 1-based line of `function <name>(` in a file, or 0.
+func scanFuncLine(path, name string) int {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	needle := "function " + name + "("
+	for i, line := range strings.Split(string(raw), "\n") {
+		if strings.Contains(line, needle) {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 func configValue(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
@@ -214,7 +298,7 @@ func majorX(v string) string {
 
 // artisanAllow is the set of read-only artisan commands the `artisan` tool may
 // run. Anything that mutates state is intentionally excluded — use `tinker`
-// (opt-in) for that.
+// for that.
 var artisanAllow = map[string]bool{
 	"about": true, "env": true,
 	"db:show": true, "db:table": true, "db:monitor": true,
@@ -240,7 +324,7 @@ func artisan(ctx context.Context, req *mcp.CallToolRequest, args map[string]any)
 		}
 		sort.Strings(allowed)
 		return toolErrResult(fmt.Sprintf(
-			"Refused: %q is not an allowed read-only artisan command. Allowed: %s. For arbitrary commands enable and use `tinker`.",
+			"Refused: %q is not an allowed read-only artisan command. Allowed: %s. For arbitrary commands use `tinker`.",
 			command, strings.Join(allowed, ", "))), nil
 	}
 	p, err := resolveProject(ctx, req)
@@ -266,6 +350,9 @@ func tinker(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 	p, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
+	}
+	if !p.hasPackage("laravel/tinker") {
+		return toolErrResult("laravel/tinker is not installed. Install it (composer require --dev laravel/tinker) to use this tool."), nil
 	}
 	out, err := p.runArtisan(ctx, "tinker", "--execute="+code)
 	if err != nil {

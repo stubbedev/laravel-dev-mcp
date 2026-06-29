@@ -48,6 +48,17 @@ type modelInfo struct {
 	Guarded   []string          `json:"guarded,omitempty"`
 	Casts     map[string]string `json:"casts,omitempty"`
 	Relations []modelRelation   `json:"relations,omitempty"`
+	Factory   string            `json:"factory,omitempty"`
+}
+
+// factoryFor returns the relative path of a model's factory by Laravel's naming
+// convention (database/factories/<Name>Factory.php), or "" when none exists.
+func (p *Project) factoryFor(name string) string {
+	rel := filepath.Join("database", "factories", name+"Factory.php")
+	if fi, err := os.Stat(p.path(rel)); err == nil && !fi.IsDir() {
+		return rel
+	}
+	return ""
 }
 
 func models(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
@@ -58,6 +69,9 @@ func models(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 	found := p.scanModels()
 	if len(found) == 0 {
 		return textResult("No Eloquent models found under app/, Modules/, or src/."), nil
+	}
+	for i := range found {
+		found[i].Factory = p.factoryFor(found[i].Name)
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].Class < found[j].Class })
 
@@ -81,11 +95,12 @@ func models(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 		Class     string `json:"class"`
 		Table     string `json:"table,omitempty"`
 		File      string `json:"file"`
+		Factory   string `json:"factory,omitempty"`
 		Relations int    `json:"relations"`
 	}
 	out := make([]summary, 0, len(found))
 	for _, m := range found {
-		out = append(out, summary{m.Name, m.Class, m.Table, m.File, len(m.Relations)})
+		out = append(out, summary{m.Name, m.Class, m.Table, m.File, m.Factory, len(m.Relations)})
 	}
 	return jsonResult(ctx, map[string]any{
 		"count":  len(out),

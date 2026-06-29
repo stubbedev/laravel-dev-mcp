@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,9 +15,10 @@ import (
 )
 
 // doctor.go runs cheap, local "why isn't this working" checks: missing
-// .env/APP_KEY, stale caches that silently ignore source edits, database
-// connectivity, and known-vulnerable composer packages. Every check degrades
-// to a clear skip/error rather than failing the whole call.
+// .env/APP_KEY, .env keys absent vs .env.example, stale caches that silently
+// ignore source edits, database connectivity, pending migrations, and
+// known-vulnerable composer packages. Every check degrades to a clear
+// skip/error rather than failing the whole call.
 
 type doctorCheck struct {
 	Name   string `json:"check"`
@@ -39,6 +41,24 @@ func doctor(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 		add("env_file", "error", ".env missing — copy .env.example, then `php artisan key:generate`")
 	} else {
 		add("env_file", "ok", "")
+
+		// Keys present in .env.example but absent from .env — the classic
+		// "pulled a branch that added a config var" trap.
+		if example := p.envFile(".env.example"); len(example) > 0 {
+			env := p.envFile(".env")
+			var missing []string
+			for k := range example {
+				if _, ok := env[k]; !ok {
+					missing = append(missing, k)
+				}
+			}
+			if len(missing) > 0 {
+				sort.Strings(missing)
+				add("env_keys", "warn", "in .env.example but missing from .env: "+strings.Join(missing, ", "))
+			} else {
+				add("env_keys", "ok", "")
+			}
+		}
 	}
 
 	if p.Env("APP_KEY", "") == "" {
@@ -72,6 +92,16 @@ func doctor(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 		}()
 	}
 
+	// Pending migrations: the actual DB schema lags what the migrations define —
+	// the classic "table/column doesn't exist" after pulling a branch.
+	if out, err := p.runArtisan(ctx, "migrate:status"); err != nil {
+		add("migrations", "skip", "could not run migrate:status (needs php + a reachable DB)")
+	} else if n := countPendingMigrations(out); n > 0 {
+		add("migrations", "warn", fmt.Sprintf("%d pending migration(s) — run `php artisan migrate`", n))
+	} else {
+		add("migrations", "ok", "")
+	}
+
 	runAudit := true
 	if has(args, "audit") {
 		runAudit = argBool(args, "audit")
@@ -87,6 +117,20 @@ func doctor(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) 
 		Root   string        `json:"root"`
 		Checks []doctorCheck `json:"checks"`
 	}{p.Root, checks}), nil
+}
+
+// countPendingMigrations counts not-yet-run migrations in `migrate:status`
+// output, handling both the modern "<name> ... Pending" format and the legacy
+// "| No  | <name> |" table.
+func countPendingMigrations(out string) int {
+	n := 0
+	for line := range strings.SplitSeq(out, "\n") {
+		l := strings.TrimSpace(line)
+		if strings.HasSuffix(l, "Pending") || strings.HasPrefix(l, "| No ") {
+			n++
+		}
+	}
+	return n
 }
 
 func addCache(add func(string, string, string), label, path, clearCmd string) {
