@@ -13,7 +13,7 @@
 
         laravel-dev-mcp = pkgs.buildGoModule {
           pname = "laravel-dev-mcp";
-          version = "0.0.9";
+          version = "0.0.10";
           src = ./.;
           # buildGoModule fetches Go deps through the module proxy and hashes
           # the resulting vendor tree; `vendorHash` pins that hash so the
@@ -26,7 +26,7 @@
           ldflags = [
             "-s"
             "-w"
-            "-X github.com/stubbedev/laravel-dev-mcp/version.Version=0.0.9"
+            "-X github.com/stubbedev/laravel-dev-mcp/version.Version=0.0.10"
           ];
           doCheck = true;
 
