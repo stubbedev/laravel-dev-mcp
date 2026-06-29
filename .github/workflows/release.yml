@@ -46,6 +46,8 @@ jobs:
             -ldflags="-s -w -X github.com/stubbedev/laravel-dev-mcp/version.Version=${VERSION}" \
             -o "dist/$STAGE/laravel-dev-mcp" .
           cp README.md LICENSE "dist/$STAGE/" 2>/dev/null || true
+          # Flat, unversioned binary consumed by the npm wrapper (scripts/download.mjs).
+          cp "dist/$STAGE/laravel-dev-mcp" "dist/laravel-dev-mcp_${{ matrix.goos }}_${{ matrix.goarch }}"
           cd dist
           tar -czf "${STAGE}.tar.gz" "$STAGE"
           shasum -a 256 "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
@@ -53,7 +55,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/laravel-dev-mcp-*.tar.gz*
+          path: |
+            dist/laravel-dev-mcp-*.tar.gz*
+            dist/laravel-dev-mcp_*
           retention-days: 7
 
   cache:
@@ -99,6 +103,35 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  npm:
+    name: publish npm wrapper
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify version matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag v$TAG does not match package.json version $PKG" >&2
+            exit 1
+          fi
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          LARAVEL_MCP_SKIP_DOWNLOAD: '1'
+        run: npm publish --provenance --access public
 
   bump-tap:
     name: bump homebrew tap

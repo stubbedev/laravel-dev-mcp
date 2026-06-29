@@ -159,9 +159,12 @@ _release bump:
         *) echo "unknown bump kind: {{bump}}"; exit 1 ;;
     esac
     just sync-flake "${NEW}"
-    if [ -n "$(git status --porcelain flake.nix)" ]; then
-        git add flake.nix
-        git commit -m "chore: bump flake.nix to v${NEW}"
+    # Keep the npm wrapper's version in lockstep — the release workflow's npm
+    # job refuses to publish if package.json doesn't match the tag.
+    sed -i -E 's|^(\s*"version": )"[^"]*",|\1"'"${NEW}"'",|' package.json
+    if [ -n "$(git status --porcelain flake.nix package.json)" ]; then
+        git add flake.nix package.json
+        git commit -m "chore: bump to v${NEW}"
     fi
     git tag -a "v${NEW}" -m "v${NEW}"
     git push origin HEAD

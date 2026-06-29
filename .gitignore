@@ -1,5 +1,7 @@
 /laravel-dev-mcp
 /dist/
+/bin/laravel-dev-mcp-native*
+/node_modules/
 .direnv/
 .envrc.local
 *.swp

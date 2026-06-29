@@ -23,6 +23,29 @@ into one binary — no PHP package to install in your app.
 
 ## Install
 
+npm (auto-updating — `@latest` always fetches the newest release binary):
+
+```sh
+npx -y @stubbedev/laravel-dev-mcp@latest
+```
+
+Or pin it in an MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "laravel-dev": {
+      "command": "npx",
+      "args": ["-y", "@stubbedev/laravel-dev-mcp@latest"]
+    }
+  }
+}
+```
+
+The npm package is a thin launcher that downloads the prebuilt Go binary for
+your platform (linux/macOS, x64/arm64) on install — or on first run if the
+install-time download is skipped. Set `LARAVEL_MCP_SKIP_DOWNLOAD=1` to skip it.
+
 Homebrew:
 
 ```sh
