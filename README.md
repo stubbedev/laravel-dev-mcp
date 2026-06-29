@@ -46,6 +46,39 @@ The npm package is a thin launcher that downloads the prebuilt Go binary for
 your platform (linux/macOS, x64/arm64) on install — or on first run if the
 install-time download is skipped. Set `LARAVEL_MCP_SKIP_DOWNLOAD=1` to skip it.
 
+Composer (no Node at runtime — handy when the host already has PHP):
+
+```sh
+composer require --dev stubbedev/laravel-dev-mcp
+```
+
+This package is a Composer plugin. On install/update it downloads the prebuilt
+Go binary for your platform (linux/macOS, x64/arm64) and registers it in the
+project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "laravel-dev": {
+      "command": "vendor/stubbedev/laravel-dev-mcp/bin/laravel-dev-mcp"
+    }
+  }
+}
+```
+
+The MCP client then execs the native binary directly — PHP is only the
+installer, never in the request path. Composer prompts once to trust the plugin
+(or pre-approve it):
+
+```sh
+composer config allow-plugins.stubbedev/laravel-dev-mcp true
+```
+
+The download matches the installed version, so pinning a tag pins the binary;
+the relative path keeps the committed `.mcp.json` working for every teammate who
+runs `composer install`. Set `LARAVEL_MCP_SKIP_DOWNLOAD=1` to skip the fetch and
+the `.mcp.json` write.
+
 Homebrew:
 
 ```sh

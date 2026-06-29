@@ -1,0 +1,24 @@
+{
+    "name": "stubbedev/laravel-dev-mcp",
+    "description": "MCP server for local Laravel development (Go, distributed as a prebuilt binary)",
+    "type": "composer-plugin",
+    "license": "MIT",
+    "keywords": ["laravel", "mcp", "developer-tools", "debugging", "telescope"],
+    "homepage": "https://github.com/stubbedev/laravel-dev-mcp",
+    "support": {
+        "issues": "https://github.com/stubbedev/laravel-dev-mcp/issues",
+        "source": "https://github.com/stubbedev/laravel-dev-mcp"
+    },
+    "require": {
+        "php": ">=8.1",
+        "composer-plugin-api": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Stubbedev\\LaravelDevMcp\\": "src/"
+        }
+    },
+    "extra": {
+        "class": "Stubbedev\\LaravelDevMcp\\ComposerPlugin"
+    }
+}

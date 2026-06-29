@@ -1,6 +1,8 @@
 /laravel-dev-mcp
 /dist/
 /bin/laravel-dev-mcp-native*
+/bin/laravel-dev-mcp
+/bin/laravel-dev-mcp.download
 /node_modules/
 .direnv/
 .envrc.local
