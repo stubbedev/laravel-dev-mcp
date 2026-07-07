@@ -1,6 +1,29 @@
 package app
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestAutoActivateOnLaravelRoot(t *testing.T) {
+	dir := t.TempDir()
+
+	ts := newToolServer()
+	ts.autoActivate(dir) // no artisan -> stays gated
+	if ts.activated.Load() {
+		t.Fatal("non-Laravel dir must not auto-activate")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ts2 := newToolServer()
+	ts2.autoActivate(dir) // artisan present -> activated up front
+	if !ts2.activated.Load() {
+		t.Fatal("Laravel dir must auto-activate so tools are visible without the gate call")
+	}
+}
 
 func TestParseToolsSplitsGate(t *testing.T) {
 	parseTools()

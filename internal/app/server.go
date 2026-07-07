@@ -50,7 +50,13 @@ func Run() int {
 		// A fresh gated server per session: the SDK calls this factory only for
 		// new sessions, so each session has its own tool visibility and one
 		// session's laravel_debug activation never leaks into another.
-		getServer := func(*http.Request) *mcp.Server { return newToolServer().srv }
+		getServer := func(r *http.Request) *mcp.Server {
+			ts := newToolServer()
+			for _, root := range parseRootHeaders(r.Header) {
+				ts.autoActivate(root.path())
+			}
+			return ts.srv
+		}
 		if err := serveHTTP(ctx, getServer, opt.httpAddr, opt.httpPath); err != nil {
 			logf("http server error: %v", err)
 			return 1
@@ -59,6 +65,9 @@ func Run() int {
 	}
 
 	ts := newToolServer()
+	if cwd, err := os.Getwd(); err == nil {
+		ts.autoActivate(cwd)
+	}
 	if err := ts.srv.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 		logf("stdio server error: %v", err)
 		return 1

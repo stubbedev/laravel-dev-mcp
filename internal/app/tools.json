@@ -171,7 +171,7 @@
  },
  {
   "name": "db_query",
-  "description": "Run a READ-ONLY SQL query against the app's database and return rows. Only SELECT/SHOW/EXPLAIN/DESCRIBE/WITH/PRAGMA are allowed; any data-modifying statement is refused. Use this for live data; use `telescope` for historical query telemetry.",
+  "description": "Run a READ-ONLY SQL query against the app's database and return rows. Use this instead of shelling out to `mysql`/`psql` — it reads the app's own DB config and enforces read-only. Only SELECT/SHOW/EXPLAIN/DESCRIBE/WITH/PRAGMA are allowed; any data-modifying statement is refused. Use this for live data; use `telescope` for historical query telemetry.",
   "inputSchema": {
    "type": "object",
    "properties": {
@@ -324,7 +324,7 @@
  },
  {
   "name": "tinker",
-  "description": "Execute arbitrary PHP in the app context via `php artisan tinker --execute`. Returns stdout. Available when laravel/tinker is installed (degrades with a clear message otherwise).",
+  "description": "Execute arbitrary PHP in the app context. Use this instead of shelling out to `php artisan tinker --execute` yourself — it targets the correct app root and returns clean stdout. Available when laravel/tinker is installed (degrades with a clear message otherwise).",
   "inputSchema": {
    "type": "object",
    "properties": {

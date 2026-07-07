@@ -88,6 +88,16 @@ func toolFromDef(d toolDef) *mcp.Tool {
 	return &mcp.Tool{Name: d.Name, Description: d.Description, InputSchema: d.InputSchema}
 }
 
+// autoActivate exposes the full tool set up front when dir is a Laravel app, so
+// the model sees tinker/db_query/... immediately instead of shelling out to
+// `php artisan`/`mysql` because only the gate meta-tool was visible. The gate
+// stays the fallback for non-Laravel or root-unknown sessions.
+func (ts *toolServer) autoActivate(dir string) {
+	if isLaravelRoot(dir) {
+		ts.activate()
+	}
+}
+
 // activate exposes the full tool set on this session's server (idempotent). The
 // SDK emits notifications/tools/list_changed so the client refreshes its list.
 func (ts *toolServer) activate() {
