@@ -1,13 +1,5 @@
 [
  {
-  "name": "laravel_debug",
-  "description": "Reveal this project's Laravel inspection tools for the current session. Call it yourself — without being asked and without the user naming any tool — the first time the work touches a Laravel app here: a 500 / exception / error to chase, logs to read, database rows or schema to look at, a route / controller / middleware question, a config or .env value to resolve, Eloquent models to map, queued or failed jobs, Telescope history, or a general \"why is this broken / is my local setup OK\" check. It unlocks: app_info, doctor, profile, state, logs, db_query, db_schema, db_connections, routes, config, absolute_url, models, telescope, telescope_prune, artisan, docs_search. These stay hidden until you call it so unrelated sessions aren't cluttered; calling it again is harmless.",
-  "inputSchema": {
-   "type": "object",
-   "properties": {}
-  }
- },
- {
   "name": "app_info",
   "description": "Report the Laravel app's PHP version, Laravel version, environment (APP_NAME/APP_ENV/APP_DEBUG), whether Telescope is installed, and the full list of installed composer packages with versions. Read from composer.lock and .env — no app boot required.",
   "inputSchema": {

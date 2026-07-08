@@ -1,46 +1,16 @@
 package app
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
-func TestAutoActivateOnLaravelRoot(t *testing.T) {
-	dir := t.TempDir()
-
-	ts := newToolServer()
-	ts.autoActivate(dir) // no artisan -> stays gated
-	if ts.activated.Load() {
-		t.Fatal("non-Laravel dir must not auto-activate")
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ts2 := newToolServer()
-	ts2.autoActivate(dir) // artisan present -> activated up front
-	if !ts2.activated.Load() {
-		t.Fatal("Laravel dir must auto-activate so tools are visible without the gate call")
-	}
-}
-
-func TestParseToolsSplitsGate(t *testing.T) {
+func TestParseToolsLoadsFullSet(t *testing.T) {
 	parseTools()
 
-	if gateDef.Name != gateToolName {
-		t.Fatalf("gate not parsed: got %q", gateDef.Name)
+	if len(allTools) < 10 {
+		t.Fatalf("expected the full toolset loaded, got %d", len(allTools))
 	}
-	if validators[gateToolName] == nil {
-		t.Fatal("gate validator missing")
-	}
-	if len(gatedTools) < 10 {
-		t.Fatalf("expected the full toolset gated, got %d", len(gatedTools))
-	}
-	for _, d := range gatedTools {
-		if d.Name == gateToolName {
-			t.Fatal("gate leaked into the gated set")
-		}
+	for _, d := range allTools {
 		if validators[d.Name] == nil {
 			t.Fatalf("validator missing for %q", d.Name)
 		}

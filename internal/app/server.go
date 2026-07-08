@@ -47,16 +47,9 @@ func Run() int {
 	defer stop()
 
 	if opt.httpOn {
-		// A fresh gated server per session: the SDK calls this factory only for
-		// new sessions, so each session has its own tool visibility and one
-		// session's laravel_debug activation never leaks into another.
-		getServer := func(r *http.Request) *mcp.Server {
-			ts := newToolServer()
-			for _, root := range parseRootHeaders(r.Header) {
-				ts.autoActivate(root.path())
-			}
-			return ts.srv
-		}
+		// A fresh server per session: the SDK calls this factory only for new
+		// sessions.
+		getServer := func(r *http.Request) *mcp.Server { return newServer() }
 		if err := serveHTTP(ctx, getServer, opt.httpAddr, opt.httpPath); err != nil {
 			logf("http server error: %v", err)
 			return 1
@@ -64,11 +57,7 @@ func Run() int {
 		return 0
 	}
 
-	ts := newToolServer()
-	if cwd, err := os.Getwd(); err == nil {
-		ts.autoActivate(cwd)
-	}
-	if err := ts.srv.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
+	if err := newServer().Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 		logf("stdio server error: %v", err)
 		return 1
 	}
@@ -86,8 +75,7 @@ const toolCallTimeout = 60 * time.Second
 
 var errUnknownTool = errors.New("unknown tool")
 
-// dispatchCall validates, formats, and routes one tools/call. The gate
-// (laravel_debug) is intercepted earlier in toolServer.onCall.
+// dispatchCall validates, formats, and routes one tools/call.
 func dispatchCall(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, toolCallTimeout)
 	defer cancel()
@@ -193,13 +181,7 @@ func buildInstructions() string {
 		"- Every tool operates on one Laravel app, resolved from the MCP workspace root (or the `X-Mcp-Root` HTTP header), falling back to the working directory. Over HTTP, set `X-Mcp-Root` per request to target different repos/worktrees from a single server.",
 	)
 	w("")
-	w("## Activation")
-	w(
-		"- The inspection tools are hidden until `laravel_debug` is called once. Call it yourself — without being asked, and without the user naming any tool — the first time the work touches a Laravel app here (an error/500 to chase, logs, database, routes, config/.env, models, jobs, Telescope, or a general 'is my setup OK' check). The tools then appear for the rest of the session; unrelated sessions stay uncluttered.",
-	)
-	w("")
 	w("## Tools")
-	w("- `laravel_debug` — unlock the tools below for this session (call first).")
 	w("- `doctor` — health-check: missing .env/APP_KEY, stale config/route/event caches, DB connectivity, vulnerable composer packages.")
 	w("- `profile` — per-request profiling from Clockwork/Debugbar: timing, query breakdown, slowest queries, N+1 detection.")
 	w("- `state` — live cache entries and queue/failed jobs (`kind=cache|queue`; database / redis / file backends).")

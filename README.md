@@ -137,14 +137,7 @@ Example MCP client config (stdio):
 
 ## Tools
 
-The tools are **gated**: only `laravel_debug` is exposed until it is called.
-Calling it reveals the rest for that session (per-session, so unrelated sessions
-stay uncluttered), and an MCP client that supports `tools/list_changed` picks
-them up automatically.
-
-- `laravel_debug` — reveal the tools below for the current session.
-
-Works on any Laravel app:
+All tools are exposed up front. Works on any Laravel app:
 
 - `app_info` — PHP/Laravel versions, env, installed composer packages.
 - `doctor` — health check: missing `.env`/`APP_KEY`, stale config/route/event caches (which silently ignore source & `.env` edits), DB connectivity, vulnerable composer packages (`composer audit`). Set `audit=false` to skip the network call.
