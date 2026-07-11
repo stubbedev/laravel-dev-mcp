@@ -122,17 +122,21 @@ jobs:
 
       # Push the built package closure to the self-hosted xilo cache on master
       # pushes, so `nix run`/flake consumers pull a prebuilt binary. Best-effort.
+      - name: setup xilo
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: stubbedev/xilo@v0
+        with:
+          url: https://nix.stubbe.dev
+          cache: laravel-dev-mcp
+          token: ${{ secrets.XILO_TOKEN }}
+
       - name: push nix build to xilo (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         continue-on-error: true
-        env:
-          XILO_URL: https://nix.stubbe.dev
-          XILO_TOKEN: ${{ secrets.XILO_TOKEN }}
         run: |
           OUT=$(nix build .#laravel-dev-mcp --no-link --print-out-paths)
-          curl -fsSL https://github.com/stubbedev/xilo/releases/latest/download/xilo-linux-amd64.tar.gz | tar -xz
           for attempt in 1 2 3; do
-            if ./xilo push laravel-dev-mcp $OUT; then
+            if xilo push laravel-dev-mcp $OUT; then
               exit 0
             fi
             echo "::warning::xilo push attempt $attempt failed; retrying in $((attempt * 30))s"

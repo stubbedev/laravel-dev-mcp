@@ -71,15 +71,18 @@ jobs:
       - name: Build package
         run: nix build .#laravel-dev-mcp -L --print-out-paths | tee /tmp/outpaths
 
+      - name: setup xilo
+        uses: stubbedev/xilo@v0
+        with:
+          url: https://nix.stubbe.dev
+          cache: laravel-dev-mcp
+          token: ${{ secrets.XILO_TOKEN }}
+
       - name: Push to xilo
         continue-on-error: true
-        env:
-          XILO_URL: https://nix.stubbe.dev
-          XILO_TOKEN: ${{ secrets.XILO_TOKEN }}
         run: |
-          curl -fsSL https://github.com/stubbedev/xilo/releases/latest/download/xilo-linux-amd64.tar.gz | tar -xz
           for attempt in 1 2 3; do
-            if ./xilo push laravel-dev-mcp $(cat /tmp/outpaths); then
+            if xilo push laravel-dev-mcp $(cat /tmp/outpaths); then
               exit 0
             fi
             echo "::warning::xilo push attempt $attempt failed; retrying in $((attempt * 30))s"
