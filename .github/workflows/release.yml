@@ -61,7 +61,7 @@ jobs:
           retention-days: 7
 
   cache:
-    name: push nix build to attic
+    name: push nix build to xilo
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -71,20 +71,21 @@ jobs:
       - name: Build package
         run: nix build .#laravel-dev-mcp -L --print-out-paths | tee /tmp/outpaths
 
-      - name: Push to attic
+      - name: Push to xilo
         continue-on-error: true
         env:
-          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+          XILO_URL: https://nix.stubbe.dev
+          XILO_TOKEN: ${{ secrets.XILO_TOKEN }}
         run: |
-          nix run nixpkgs#attic-client -- login stubbe https://nix.stubbe.dev "$ATTIC_TOKEN"
+          curl -fsSL https://github.com/stubbedev/xilo/releases/latest/download/xilo-linux-amd64.tar.gz | tar -xz
           for attempt in 1 2 3; do
-            if nix run nixpkgs#attic-client -- push laravel-dev-mcp $(cat /tmp/outpaths); then
+            if ./xilo push laravel-dev-mcp $(cat /tmp/outpaths); then
               exit 0
             fi
-            echo "::warning::attic push attempt $attempt failed; retrying in $((attempt * 30))s"
+            echo "::warning::xilo push attempt $attempt failed; retrying in $((attempt * 30))s"
             sleep $((attempt * 30))
           done
-          echo "::warning::attic push failed after 3 attempts; cache push is best-effort, continuing"
+          echo "::warning::xilo push failed after 3 attempts; cache push is best-effort, continuing"
 
   release:
     name: publish github release
