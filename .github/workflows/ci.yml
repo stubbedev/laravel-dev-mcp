@@ -124,10 +124,10 @@ jobs:
       # pushes, so `nix run`/flake consumers pull a prebuilt binary. Best-effort.
       - name: setup xilo
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: stubbedev/xilo@v0
+        uses: stubbedev/xilo@v1
         with:
           url: https://nix.stubbe.dev
-          cache: laravel-dev-mcp
+          cache: default
           token: ${{ secrets.XILO_TOKEN }}
 
       - name: push nix build to xilo (master)
@@ -136,7 +136,7 @@ jobs:
         run: |
           OUT=$(nix build .#laravel-dev-mcp --no-link --print-out-paths)
           for attempt in 1 2 3; do
-            if xilo push laravel-dev-mcp $OUT; then
+            if xilo push default $OUT; then
               exit 0
             fi
             echo "::warning::xilo push attempt $attempt failed; retrying in $((attempt * 30))s"
