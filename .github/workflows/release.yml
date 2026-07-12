@@ -29,7 +29,7 @@ jobs:
             goarch: arm64
             os: macos-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -64,7 +64,7 @@ jobs:
     name: push nix build to xilo
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -96,7 +96,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -117,7 +117,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -167,7 +167,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Check out homebrew tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: stubbedev/homebrew-laravel-dev-mcp
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
