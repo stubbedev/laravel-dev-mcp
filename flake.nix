@@ -20,8 +20,8 @@
           # sandboxed build is reproducible. Bump after any `go get` / `go mod
           # tidy` that changes go.sum — `nix build` prints the expected hash on
           # mismatch, or run `just sync-flake`.
-          # go-sum: ead6c61b049894264997b14a7139f67263873b22720a3c70b736f7d2248b0173
-          vendorHash = "sha256-1JfIMVibtsXDYtydwiW/omscnQf/Ciua2vqa0WveQuQ=";
+          # go-sum: 6a61e71b0ec64fa1fb28f0309c132c899ee8a7c203caa102ce6431e10825ad76
+          vendorHash = "sha256-8Wjmrz/tvhoP0z8uKfPQKk41aGFX8PcP14duoXXqhtc=";
           subPackages = [ "." ];
           ldflags = [
             "-s"
