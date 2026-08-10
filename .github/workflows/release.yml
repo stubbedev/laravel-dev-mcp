@@ -143,6 +143,14 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     if: ${{ !contains(github.ref_name, '-') }}
+    # The formula bump is a convenience, not part of shipping the release: the
+    # binaries and the npm package are already published by `release` above.
+    # HOMEBREW_TAP_TOKEN is a PAT against stubbedev/homebrew-laravel-dev-mcp and
+    # expires on its own schedule; when it does, checkout fails with "Bad
+    # credentials" and used to redden an otherwise complete release. Now the tap
+    # simply stops updating until the secret is refreshed — check this job after
+    # a release if `brew` is serving a stale version.
+    continue-on-error: true
     steps:
       - name: Read sha256 files from release
         env:
