@@ -82,7 +82,7 @@ the `.mcp.json` write.
 Homebrew:
 
 ```sh
-brew install stubbedev/laravel-dev-mcp/laravel-dev-mcp
+brew install stubbedev/tap/laravel-dev-mcp
 ```
 
 Nix (binary cache at `nix.stubbe.dev`):
