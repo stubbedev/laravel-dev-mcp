@@ -82,6 +82,7 @@ the `.mcp.json` write.
 Homebrew:
 
 ```sh
+brew tap stubbedev/tap
 brew install stubbedev/tap/laravel-dev-mcp
 ```
 
