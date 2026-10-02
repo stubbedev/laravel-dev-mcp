@@ -5,7 +5,7 @@
 buildGo127Module rec {
   pname = "laravel-dev-mcp";
   # Release-managed: `just sync-flake <version>` rewrites this on a tag bump.
-  version = "0.0.14";
+  version = "0.0.15";
 
   src = lib.cleanSource ./.;
 
