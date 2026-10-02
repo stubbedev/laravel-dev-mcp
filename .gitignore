@@ -7,4 +7,5 @@
 .direnv/
 .envrc.local
 *.swp
-result
+/result
+*.test

@@ -3,6 +3,8 @@ package app
 import "testing"
 
 func TestCountPendingMigrations(t *testing.T) {
+	t.Parallel()
+
 	modern := `  Migration name ........................ Batch / Status
   0001_01_01_000000_create_users_table .. [1] Ran
   2024_05_01_000000_create_foo_table .... Pending

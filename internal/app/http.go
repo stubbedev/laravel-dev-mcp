@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +17,11 @@ const (
 	defaultHTTPPath = "/mcp"
 
 	sessionTTL = 30 * time.Minute
+
+	// readHeaderTimeout bounds slow-loris clients; shutdownTimeout is how long
+	// in-flight requests get to drain on SIGINT/SIGTERM.
+	readHeaderTimeout = 10 * time.Second
+	shutdownTimeout   = 5 * time.Second
 )
 
 // authMiddleware enforces the bearer token (LARAVEL_MCP_TOKEN) when configured.
@@ -24,60 +31,77 @@ func authMiddleware(next http.Handler) http.Handler {
 	if want == "" {
 		return next
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		got := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		if got == "" {
-			got = r.Header.Get("X-Mcp-Token")
+			got = req.Header.Get("X-Mcp-Token")
 		}
+
 		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writer.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(writer, "unauthorized", http.StatusUnauthorized)
+
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		next.ServeHTTP(writer, req)
 	})
 }
 
-func ensureLeadingSlash(p string) string {
-	if p == "" {
+func ensureLeadingSlash(path string) string {
+	if path == "" {
 		return defaultHTTPPath
 	}
-	if !strings.HasPrefix(p, "/") {
-		return "/" + p
+
+	if !strings.HasPrefix(path, "/") {
+		return "/" + path
 	}
-	return p
+
+	return path
 }
 
 // serveHTTP runs the MCP server over the SDK's Streamable HTTP transport on a
 // single endpoint, with idle-session reaping. The handler exposes request
 // headers to tool handlers (header-pinned roots). Shuts down when ctx is
-// cancelled.
+// cancelled. A returned error is ready to log as-is.
 func serveHTTP(ctx context.Context, getServer func(*http.Request) *mcp.Server, addr, path string) error {
-	handler := mcp.NewStreamableHTTPHandler(
-		getServer,
-		&mcp.StreamableHTTPOptions{SessionTimeout: sessionTTL},
-	)
+	// The SDK defaults are what we want for everything but the session TTL.
+	opts := new(mcp.StreamableHTTPOptions)
+	opts.SessionTimeout = sessionTTL
+
+	handler := mcp.NewStreamableHTTPHandler(getServer, opts)
 
 	mux := http.NewServeMux()
 	mux.Handle(path, authMiddleware(handler))
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	mux.HandleFunc("/healthz", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(`{"status":"ok"}`))
 	})
 
-	httpSrv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	// net/http defaults for everything else; only the header timeout differs.
+	httpSrv := new(http.Server)
+	httpSrv.Addr = addr
+	httpSrv.Handler = mux
+	httpSrv.ReadHeaderTimeout = readHeaderTimeout
 
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// ctx is already done here; WithoutCancel keeps its values but gives
+		// Shutdown its own deadline to drain in-flight requests.
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
+
 		_ = httpSrv.Shutdown(shutdownCtx)
 	}()
 
 	logf("listening on http://%s%s (MCP Streamable HTTP)", addr, path)
-	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+
+	err := httpSrv.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http server error: %w", err)
 	}
+
 	return nil
 }

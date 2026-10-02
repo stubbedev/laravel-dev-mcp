@@ -355,7 +355,7 @@
  },
  {
   "name": "models",
-  "description": "Discover Eloquent models by parsing the app's PHP (no execution). Scans app/, Modules/, app/Modules/, and src/ for model classes regardless of namespace/folder. Omit `model` for a summary list; pass a name or class substring for full table, fillable, guarded, casts, and relationships. Each model also reports its `factory` path when database/factories/<Name>Factory.php exists.",
+  "description": "Discover Eloquent models by parsing the app's PHP (no execution). Scans app/, Modules/, app/Modules/, and src/ for model classes regardless of namespace/folder. Omit `model` for a summary list; pass a name or class substring for full table, fillable, guarded, casts, and relationships. Each model also reports its `factory` path when database/factories/<Name>Factory.php exists. Models flagged `partial` use PHP syntax newer than 8.1 (property hooks, DNF types, the pipe operator, …) that the parser skips, so their details may be incomplete; read the file for those.",
   "inputSchema": {
    "type": "object",
    "properties": {

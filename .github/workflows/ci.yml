@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,8 +22,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -32,19 +37,20 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
-      - name: gofmt + go vet
+          version: v2.14.0
+      - name: formatters (gofumpt, gci)
         run: |
-          unformatted=$(gofmt -l .)
-          [ -z "$unformatted" ] || { echo "::error::gofmt needed on:"; echo "$unformatted"; exit 1; }
-          go vet ./...
+          out=$(golangci-lint fmt --diff ./...)
+          [ -z "$out" ] || { echo "::error::code is not formatted; run 'just fmt'"; printf '%s\n' "$out"; exit 1; }
 
   nix:
     name: nix flake check
@@ -52,13 +58,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # need a real ref + write token so the auto-bump step can push the
           # refreshed vendorHash back to master.
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           # Substitute from the self-hosted xilo cache. This must be set at
           # install time: the `xilo use` step later in the job rewrites nix.conf
@@ -67,7 +73,7 @@ jobs:
           extra-conf: |
             extra-substituters = https://nix.stubbe.dev/c/default/default
             extra-trusted-public-keys = default:6uWvXutL9cXjV3lii+Ur5ff+ArQoG4kMBKNXWrIxhHg=
-      - uses: nix-community/cache-nix-action@v7
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.lock', '**/Cargo.lock', '**/go.sum') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -77,15 +83,15 @@ jobs:
           purge-primary-key: never
           gc-max-store-size-linux: 5G
 
-      # Inline `just sync-flake`. Rewrites flake.nix's vendorHash to match the
+      # Inline `just sync-flake`. Rewrites package.nix's vendorHash to match the
       # current go.sum. On master pushes the result is auto-committed; on PRs we
       # fail if it would change anything, so reviewers see the drift.
-      - name: sync flake.nix vendorHash
+      - name: sync package.nix vendorHash
         run: |
           set -euo pipefail
           GO_SUM_HASH=$(sha256sum go.sum | awk '{print $1}')
           SENTINEL="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-          sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' flake.nix
+          sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' package.nix
           set +e
           OUT=$(nix build .#laravel-dev-mcp --no-link 2>&1)
           BUILD_STATUS=$?
@@ -101,34 +107,34 @@ jobs:
             echo "::error::sync-flake: nix build did not print 'got: sha256-…'"
             exit 1
           fi
-          sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' flake.nix
-          if grep -q '^[[:space:]]*# go-sum:' flake.nix; then
-            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' flake.nix
+          sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' package.nix
+          if grep -q '^[[:space:]]*# go-sum:' package.nix; then
+            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' package.nix
           else
-            sed -i -E 's|^(\s*vendorHash = )|          # go-sum: '"$GO_SUM_HASH"'\n\1|' flake.nix
+            sed -i -E 's|^(\s*vendorHash = )|  # go-sum: '"$GO_SUM_HASH"'\n\1|' package.nix
           fi
           echo "sync-flake: vendorHash=$NEW_HASH go-sum=$GO_SUM_HASH"
 
-      - name: assert flake.nix in sync (PR)
+      - name: assert package.nix in sync (PR)
         if: github.event_name == 'pull_request'
         run: |
-          if [ -n "$(git status --porcelain flake.nix)" ]; then
-            echo "::error::flake.nix vendorHash is out of sync with go.sum. Run 'just sync-flake' locally and commit the result."
-            git --no-pager diff flake.nix
+          if [ -n "$(git status --porcelain package.nix)" ]; then
+            echo "::error::package.nix vendorHash is out of sync with go.sum. Run 'just sync-flake' locally and commit the result."
+            git --no-pager diff package.nix
             exit 1
           fi
 
-      - name: auto-commit flake.nix bump (master)
+      - name: auto-commit package.nix bump (master)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
-          if [ -z "$(git status --porcelain flake.nix)" ]; then
-            echo "flake.nix already in sync; nothing to commit."
+          if [ -z "$(git status --porcelain package.nix)" ]; then
+            echo "package.nix already in sync; nothing to commit."
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add flake.nix
-          git commit -m 'chore: auto-bump flake.nix vendorHash [skip ci]'
+          git add package.nix
+          git commit -m 'chore: auto-bump package.nix vendorHash [skip ci]'
           git push origin HEAD:master
 
       - run: nix flake check --print-build-logs
@@ -139,7 +145,7 @@ jobs:
       # source, so the step fails the job.
       - name: setup xilo
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: stubbedev/xilo@v1
+        uses: stubbedev/xilo@4528483a1a261f5ed6578606d30526c6a908d1b4 # v1.2.2
         with:
           url: https://nix.stubbe.dev
           cache: default

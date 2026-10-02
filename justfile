@@ -1,44 +1,39 @@
-_default:
+# laravel-dev-mcp dev tasks.
+
+# List all recipes with their descriptions.
+default:
     @just --list
 
-# Build the binary.
-build:
-    go build -o laravel-dev-mcp .
+# Run every release gate in order: vet, lint, test, build, then keep package.nix's vendorHash in sync.
+check: vet lint test build sync-flake
 
-# Run tests.
+# Static analysis of every package with go vet.
+vet:
+    go vet ./...
+
+# Lint every package; settings live in .golangci.yml.
+lint:
+    golangci-lint run
+
+# Run the test suite for every package.
 test:
     go test ./...
 
-# Auto-fix formatting, then vet + full golangci-lint gate.
-lint: fmt
-    go vet ./...
-    golangci-lint run ./...
+# Compile-check every package; the output is discarded.
+build:
+    go build -o /dev/null ./...
 
+# Format every Go source in place with the formatters from .golangci.yml (gofumpt, gci).
 fmt:
-    golangci-lint fmt ./...
+    golangci-lint fmt
 
-# Strict read-only check — same logic CI runs.
-lint-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    out=$(golangci-lint fmt --diff ./...)
-    if [ -n "$out" ]; then
-        echo "code is not formatted; run 'just fmt':"
-        printf '%s\n' "$out"
-        exit 1
-    fi
-    go vet ./...
-    golangci-lint run ./...
-
+# Build the flake package and run its checks.
 nix-check:
     nix flake check --print-build-logs
 
-# Everything CI runs, with auto-fix where possible.
-check: lint test sync-flake
-
-# Keep flake.nix's `vendorHash` aligned with the current go.sum. A sha256 of
-# go.sum is cached as a `# go-sum:` line; when it matches, this returns
-# immediately. Pass a `version` to also rewrite version + ldflags (release use).
+# A sha256 of go.sum is cached as a `# go-sum:` line in package.nix; when it
+# matches, this returns immediately. `--force` recomputes regardless.
+# Align package.nix's vendorHash with go.sum; pass a version to also set the package version.
 sync-flake version="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -52,8 +47,8 @@ sync-flake version="":
     esac
 
     GO_SUM_HASH=$(sha256sum go.sum | awk '{print $1}')
-    CACHED_HASH=$(awk -F': ' '/^[[:space:]]*#[[:space:]]*go-sum:/ {print $2; exit}' flake.nix | tr -d ' ')
-    CURRENT_VERSION=$(awk -F'"' '/^[[:space:]]*version = "/ {print $2; exit}' flake.nix)
+    CACHED_HASH=$(awk -F': ' '/^[[:space:]]*#[[:space:]]*go-sum:/ {print $2; exit}' package.nix | tr -d ' ')
+    CURRENT_VERSION=$(awk -F'"' '/^[[:space:]]*version = "/ {print $2; exit}' package.nix)
 
     NEED_HASH=0
     NEED_VERSION=0
@@ -69,7 +64,7 @@ sync-flake version="":
 
     if [ "$NEED_HASH" = "1" ]; then
         SENTINEL="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' flake.nix
+        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' package.nix
         set +e
         OUT=$(nix build .#laravel-dev-mcp --no-link 2>&1)
         BUILD_STATUS=$?
@@ -85,23 +80,22 @@ sync-flake version="":
             echo "sync-flake: nix build failed without printing 'got: sha256-…'" >&2
             exit 1
         fi
-        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' flake.nix
-        if grep -q '^[[:space:]]*# go-sum:' flake.nix; then
-            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' flake.nix
+        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' package.nix
+        if grep -q '^[[:space:]]*# go-sum:' package.nix; then
+            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' package.nix
         else
-            sed -i -E 's|^(\s*vendorHash = )|          # go-sum: '"$GO_SUM_HASH"'\n\1|' flake.nix
+            sed -i -E 's|^(\s*vendorHash = )|  # go-sum: '"$GO_SUM_HASH"'\n\1|' package.nix
         fi
         echo "sync-flake: vendorHash=$NEW_HASH go-sum=$GO_SUM_HASH"
     fi
 
-    if grep -q '^\s*vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' flake.nix; then
-        echo "sync-flake: refusing to leave sentinel vendorHash in flake.nix" >&2
+    if grep -q '^\s*vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' package.nix; then
+        echo "sync-flake: refusing to leave sentinel vendorHash in package.nix" >&2
         exit 1
     fi
 
     if [ "$NEED_VERSION" = "1" ]; then
-        sed -i -E 's|^(\s*version = )"[^"]*";|\1"'"$VERSION"'";|' flake.nix
-        sed -i -E 's|(-X github.com/stubbedev/laravel-dev-mcp/version.Version=)[^"]*|\1'"$VERSION"'|' flake.nix
+        sed -i -E 's|^(\s*version = )"[^"]*";|\1"'"$VERSION"'";|' package.nix
         echo "sync-flake: version=$VERSION"
     fi
 
@@ -109,6 +103,7 @@ sync-flake version="":
 
 # ─────────────────────────── Release ───────────────────────────
 
+# Show the next major/minor/patch tags.
 release-preview:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -136,11 +131,6 @@ _release-checks:
         exit 1
     fi
     just check
-    if [ -n "$(git status --porcelain)" ]; then
-        echo "Formatting/lint produced changes — staging + committing."
-        git add -A
-        git commit -m "chore: format code for release"
-    fi
 
 _release bump:
     #!/usr/bin/env bash
@@ -162,8 +152,8 @@ _release bump:
     # Keep the npm wrapper's version in lockstep — the release workflow's npm
     # job refuses to publish if package.json doesn't match the tag.
     sed -i -E 's|^(\s*"version": )"[^"]*",|\1"'"${NEW}"'",|' package.json
-    if [ -n "$(git status --porcelain flake.nix package.json)" ]; then
-        git add flake.nix package.json
+    if [ -n "$(git status --porcelain package.nix package.json)" ]; then
+        git add package.nix package.json
         git commit -m "chore: bump to v${NEW}"
     fi
     git tag -a "v${NEW}" -m "v${NEW}"
@@ -172,6 +162,9 @@ _release bump:
     echo
     echo "Tagged v${NEW}. Watch: gh run watch || open https://github.com/stubbedev/laravel-dev-mcp/actions"
 
+# Tag and push the next patch release.
 release-patch: (_release "patch")
+# Tag and push the next minor release.
 release-minor: (_release "minor")
+# Tag and push the next major release.
 release-major: (_release "major")

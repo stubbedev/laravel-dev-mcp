@@ -102,7 +102,9 @@ final class Binary
             $ok = curl_exec($ch);
             $err = curl_error($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            // No curl_close(): it has been a no-op since PHP 8.0 (handles are
+            // objects freed on scope exit) and is deprecated as of PHP 8.5.
+            unset($ch);
             fclose($fh);
             if ($ok === false) {
                 @unlink($dest);

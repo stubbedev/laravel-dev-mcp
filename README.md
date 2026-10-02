@@ -167,11 +167,36 @@ Requires Laravel Telescope (degrades gracefully when absent):
 ## Development
 
 ```sh
-just build    # compile
+just check    # every gate in order: vet, lint, test, build, sync package.nix vendorHash
+just vet      # go vet ./...
+just lint     # golangci-lint run (config in .golangci.yml)
 just test     # go test ./...
-just lint     # format + vet + golangci-lint
-just check    # everything CI runs
+just build    # compile-check every package
+just fmt      # apply the gofumpt, gci and golines formatters
 ```
+
+Linting runs every golangci-lint linter (`default: all`; only deprecated ones
+are off, in favour of their replacements). An intentional exception is a
+`//nolint:<linter> // <reason>` on the exact line, which `nolintlint` checks.
+
+Every dev tool (Go pinned to the version go.mod declares, gopls,
+golangci-lint, delve, just, git, gh) comes from the flake: `nix develop`, or
+`direnv allow` with a `use flake` `.envrc`. The shell sets `GOTOOLCHAIN=local`
+and `CGO_ENABLED=0`. The package itself lives in `package.nix`; after a
+dependency change, `just sync-flake` refreshes its `vendorHash`.
+
+CI runs build/test/lint and the nix check (`ci.yml`), plus CodeQL, Grype,
+govulncheck and dependency review (`security.yml`). Dependabot keeps Go
+modules and pinned actions current.
+
+### PHP syntax support
+
+`config/*.php` and model files are parsed with a PHP 8.1 grammar (the newest
+[php-parser](https://github.com/VKCOM/php-parser) implements). Files using
+later syntax, such as DNF types, typed class constants, property hooks,
+asymmetric visibility or the 8.5 pipe operator, still work: a config that
+can't be read statically is resolved through PHP instead, and an affected model
+is listed with `partial: true`.
 
 Releases are cut with `just release-patch|minor|major` (tags `vX.Y.Z`), which
 trigger multi-arch binary builds, the nix cache push, the GitHub release, and

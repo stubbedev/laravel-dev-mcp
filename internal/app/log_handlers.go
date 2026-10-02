@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,7 +12,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var errorLevels = map[string]bool{"ERROR": true, "CRITICAL": true, "ALERT": true, "EMERGENCY": true}
+const (
+	logDefaultLimit = 50
+	logMaxLimit     = 200
+)
+
+// isErrorLevel reports whether a Monolog level is error-or-worse.
+func isErrorLevel(level string) bool {
+	switch level {
+	case "ERROR", "CRITICAL", "ALERT", "EMERGENCY":
+		return true
+	default:
+		return false
+	}
+}
 
 // appLogPath returns the newest file the app actually logs to. It reads
 // config/logging.php to honor a custom LOG_CHANNEL / path (including a `stack`
@@ -22,6 +37,7 @@ func (p *Project) appLogPath() string {
 			return path
 		}
 	}
+
 	return newestMatch([]string{p.path("storage", "logs", "laravel*.log")})
 }
 
@@ -33,18 +49,20 @@ func (p *Project) configuredLogGlobs() []string {
 	if err != nil || !ok {
 		return nil
 	}
-	m, _ := cfgv.(map[string]any)
-	if m == nil {
+
+	logging := asMap(cfgv)
+	if logging == nil {
 		return nil
 	}
-	def, _ := m["default"].(string)
-	channels, _ := m["channels"].(map[string]any)
+
+	channels := asMap(logging["channels"])
 
 	var globs []string
-	for _, path := range channelLogPaths(channels, def, map[string]bool{}) {
+	for _, path := range channelLogPaths(channels, asStr(logging["default"]), map[string]bool{}) {
 		// single → the exact file; daily → laravel.log rotated to laravel-DATE.log.
 		globs = append(globs, path, dailyGlob(path))
 	}
+
 	return globs
 }
 
@@ -54,53 +72,68 @@ func channelLogPaths(channels map[string]any, name string, seen map[string]bool)
 	if name == "" || seen[name] {
 		return nil
 	}
+
 	seen[name] = true
-	ch, _ := channels[name].(map[string]any)
-	if ch == nil {
+
+	channel := asMap(channels[name])
+	if channel == nil {
 		return nil
 	}
-	switch driver, _ := ch["driver"].(string); driver {
-	case "single", "daily":
-		if path, ok := ch["path"].(string); ok && path != "" {
+
+	switch asStr(channel[keyDriver]) {
+	case driverSingle, driverDaily:
+		if path, ok := channel[keyPath].(string); ok && path != "" {
 			return []string{path}
 		}
-	case "stack":
-		var out []string
-		if members, ok := ch["channels"].([]any); ok {
-			for _, mem := range members {
-				if sub, ok := mem.(string); ok {
-					out = append(out, channelLogPaths(channels, sub, seen)...)
-				}
-			}
-		}
-		return out
+
+		return nil
+	case driverStack:
+		return stackChannelPaths(channels, channel, seen)
+	default:
+		return nil
 	}
-	return nil
+}
+
+// stackChannelPaths expands a `stack` channel's members into their paths.
+func stackChannelPaths(channels, stack map[string]any, seen map[string]bool) []string {
+	var out []string
+
+	for _, member := range asArr(stack["channels"]) {
+		if sub, ok := member.(string); ok {
+			out = append(out, channelLogPaths(channels, sub, seen)...)
+		}
+	}
+
+	return out
 }
 
 // dailyGlob turns "/logs/laravel.log" into "/logs/laravel-*.log" to match the
 // date-suffixed files the daily driver writes.
 func dailyGlob(path string) string {
 	ext := filepath.Ext(path)
+
 	return strings.TrimSuffix(path, ext) + "-*" + ext
 }
 
 // newestMatch returns the most recently modified file across the given globs,
 // or "" when none exist.
 func newestMatch(globs []string) string {
-	newest, newestMod := "", int64(0)
-	for _, g := range globs {
-		matches, _ := filepath.Glob(g)
-		for _, m := range matches {
-			fi, err := os.Stat(m)
+	newest, newestNano := "", int64(0)
+
+	for _, glob := range globs {
+		matches, _ := filepath.Glob(glob)
+		for _, match := range matches {
+			info, err := os.Stat(match)
 			if err != nil {
 				continue
 			}
-			if mod := fi.ModTime().UnixNano(); newest == "" || mod >= newestMod {
-				newest, newestMod = m, mod
+
+			if modNano := info.ModTime().UnixNano(); newest == "" || modNano >= newestNano {
+				newest, newestNano = match, modNano
 			}
 		}
 	}
+
 	return newest
 }
 
@@ -108,74 +141,105 @@ func newestMatch(globs []string) string {
 // laravel*.log; source=error returns the last error-level entry from it;
 // source=browser tails storage/logs/browser.log.
 func logs(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
-	p, err := resolveProject(ctx, req)
+	proj, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
 
 	source := strings.ToLower(argString(args, "source"))
 	if source == "" {
-		source = "app"
+		source = sourceApp
 	}
 
-	if source == "browser" {
-		return browserLog(p, args)
-	}
-	if source != "app" && source != "error" {
+	switch source {
+	case sourceBrowser:
+		return browserLog(proj, args)
+	case sourceApp, sourceError:
+		return appLog(ctx, proj, source, args)
+	default:
 		return toolErrResult("Refused: unknown source " + source + " (use app, error, or browser)."), nil
 	}
+}
 
-	path := p.appLogPath()
+// appLog serves source=app (filtered tail) and source=error (last error-level
+// entry) from the newest application log.
+func appLog(ctx context.Context, proj *Project, source string, args map[string]any) (toolResult, error) {
+	path := proj.appLogPath()
 	if path == "" {
-		return textResult("No application log file found (checked config/logging.php and storage/logs/laravel*.log)."), nil
+		return textResult(
+			"No application log file found (checked config/logging.php and storage/logs/laravel*.log).",
+		), nil
 	}
+
 	raw, err := tailBytes(path, maxLogTail)
 	if err != nil {
 		return toolResult{}, err
 	}
+
 	entries := parseLogEntries(string(raw))
 
-	if source == "error" {
-		for _, e := range slices.Backward(entries) {
-			if errorLevels[e.Level] {
-				return jsonResult(ctx, e), nil
-			}
-		}
-		return textResult("No error-level entries found in the log tail."), nil
+	if source == sourceError {
+		return lastErrorEntry(ctx, entries), nil
 	}
 
-	if lvl := strings.ToUpper(argString(args, "level")); lvl != "" {
-		filtered := entries[:0]
-		for _, e := range entries {
-			if e.Level == lvl {
-				filtered = append(filtered, e)
-			}
-		}
-		entries = filtered
-	}
-	entries = lastN(entries, argClampInt(args, "limit", 50, 200))
+	entries = filterLogLevel(entries, strings.ToUpper(argString(args, "level")))
+
+	entries = lastN(entries, argClampInt(args, "limit", logDefaultLimit, logMaxLimit))
 	if len(entries) == 0 {
 		return textResult("No matching log entries."), nil
 	}
+
 	return jsonResult(ctx, entries), nil
 }
 
-func browserLog(p *Project, args map[string]any) (toolResult, error) {
-	path := p.path("storage", "logs", "browser.log")
+func lastErrorEntry(ctx context.Context, entries []logEntry) toolResult {
+	for _, entry := range slices.Backward(entries) {
+		if isErrorLevel(entry.Level) {
+			return jsonResult(ctx, entry)
+		}
+	}
+
+	return textResult("No error-level entries found in the log tail.")
+}
+
+// filterLogLevel keeps only entries at level; an empty level keeps all.
+func filterLogLevel(entries []logEntry, level string) []logEntry {
+	if level == "" {
+		return entries
+	}
+
+	filtered := entries[:0]
+	for _, entry := range entries {
+		if entry.Level == level {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	return filtered
+}
+
+func browserLog(proj *Project, args map[string]any) (toolResult, error) {
+	path := proj.path("storage", "logs", "browser.log")
+
 	raw, err := tailBytes(path, maxLogTail)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return textResult("No browser log at storage/logs/browser.log. Frontend logging is not set up."), nil
 		}
+
 		return toolResult{}, err
 	}
+
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
-	n := argClampInt(args, "limit", 50, 200)
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+
+	limit := argClampInt(args, "limit", logDefaultLimit, logMaxLimit)
+	if len(lines) > limit {
+		lines = lines[len(lines)-limit:]
 	}
+
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return textResult("Browser log is empty."), nil
 	}
+
 	return textResult(strings.Join(lines, "\n")), nil
 }

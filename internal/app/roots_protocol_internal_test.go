@@ -13,7 +13,16 @@ import (
 // failing round-trip on every call, or dropping roots for clients that still
 // answer them.
 func TestRootsAllowedProtocolGate(t *testing.T) {
-	caps := &mcp.ClientCapabilities{RootsV2: &mcp.RootCapabilities{}}
+	t.Parallel()
+
+	// Only the roots capability matters to the gate.
+	caps := new(mcp.ClientCapabilities)
+	caps.RootsV2 = &mcp.RootCapabilities{ListChanged: false}
+
+	params := func(ver string, caps *mcp.ClientCapabilities) *mcp.InitializeParams {
+		return &mcp.InitializeParams{Meta: nil, Capabilities: caps, ClientInfo: nil, ProtocolVersion: ver}
+	}
+
 	for ver, want := range map[string]bool{
 		"2024-11-05": true,
 		"2025-06-18": true,
@@ -21,14 +30,16 @@ func TestRootsAllowedProtocolGate(t *testing.T) {
 		"2026-07-28": false,
 		"2027-03-01": false,
 	} {
-		if got := rootsAllowed(&mcp.InitializeParams{ProtocolVersion: ver, Capabilities: caps}); got != want {
+		if got := rootsAllowed(params(ver, caps)); got != want {
 			t.Errorf("rootsAllowed(%s) = %v, want %v", ver, got, want)
 		}
 	}
+
 	if rootsAllowed(nil) {
 		t.Error("nil params should not be roots-usable")
 	}
-	if rootsAllowed(&mcp.InitializeParams{ProtocolVersion: "2025-11-25"}) {
+
+	if rootsAllowed(params("2025-11-25", nil)) {
 		t.Error("client without the roots capability should not be roots-usable")
 	}
 }

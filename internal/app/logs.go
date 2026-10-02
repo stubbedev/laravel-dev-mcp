@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -21,62 +22,90 @@ type logEntry struct {
 	Message   string `json:"message"`
 }
 
-// tailBytes returns up to the last n bytes of a file.
-func tailBytes(path string, n int64) ([]byte, error) {
-	f, err := os.Open(path)
+// tailBytes returns up to the last maxBytes bytes of a file.
+func tailBytes(path string, maxBytes int64) ([]byte, error) {
+	file, err := os.Open(path) //nolint:gosec // G304: tailing the project's own log files is the point
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening log: %w", err)
 	}
-	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading log size: %w", err)
 	}
+
 	start := int64(0)
-	if info.Size() > n {
-		start = info.Size() - n
+	if info.Size() > maxBytes {
+		start = info.Size() - maxBytes
 	}
-	if _, err := f.Seek(start, io.SeekStart); err != nil {
-		return nil, err
+
+	_, err = file.Seek(start, io.SeekStart)
+	if err != nil {
+		return nil, fmt.Errorf("seeking log tail: %w", err)
 	}
-	return io.ReadAll(f)
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("reading log tail: %w", err)
+	}
+
+	return data, nil
 }
 
 var headerRe = regexp.MustCompile(`^\[([^\]]+)\]\s+([^.]+)\.(\w+):\s?(.*)$`)
 
+// parseLogHeader splits an entry's first line into its fields and the start of
+// its message; a line that doesn't match the header shape is all message.
+func parseLogHeader(line string) (logEntry, string) {
+	match := headerRe.FindStringSubmatch(line)
+	if match == nil {
+		return logEntry{Timestamp: "", Level: "", Channel: "", Message: ""}, line
+	}
+
+	return logEntry{Timestamp: match[1], Level: strings.ToUpper(match[3]), Channel: match[2], Message: ""}, match[4]
+}
+
 // parseLogEntries splits raw Laravel log text into entries (header line + any
 // following stack-trace lines), most recent last.
 func parseLogEntries(raw string) []logEntry {
-	lines := strings.Split(raw, "\n")
-	var entries []logEntry
-	var cur *logEntry
+	var (
+		entries []logEntry
+		cur     *logEntry
+		msg     strings.Builder // cur's message; traces run to thousands of lines
+	)
+
 	flush := func() {
 		if cur != nil {
-			cur.Message = strings.TrimRight(cur.Message, "\n")
+			cur.Message = strings.TrimRight(msg.String(), "\n")
 			entries = append(entries, *cur)
 			cur = nil
 		}
 	}
-	for _, line := range lines {
+
+	for line := range strings.Lines(raw) {
+		line = strings.TrimSuffix(line, "\n")
 		if logEntryStart.MatchString(line) {
 			flush()
-			e := logEntry{}
-			if m := headerRe.FindStringSubmatch(line); m != nil {
-				e.Timestamp = m[1]
-				e.Channel = m[2]
-				e.Level = strings.ToUpper(m[3])
-				e.Message = m[4]
-			} else {
-				e.Message = line
-			}
-			cur = &e
+
+			entry, first := parseLogHeader(line)
+
+			msg.Reset()
+			msg.WriteString(first)
+
+			cur = &entry
+
 			continue
 		}
+
 		if cur != nil {
-			cur.Message += "\n" + line
+			msg.WriteByte('\n')
+			msg.WriteString(line)
 		}
 	}
+
 	flush()
+
 	return entries
 }
 
@@ -84,5 +113,6 @@ func lastN(entries []logEntry, n int) []logEntry {
 	if n > 0 && len(entries) > n {
 		return entries[len(entries)-n:]
 	}
+
 	return entries
 }

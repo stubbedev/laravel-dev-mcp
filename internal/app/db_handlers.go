@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,121 +13,147 @@ import (
 // maxQueryRows caps rows returned by db_query to keep results readable.
 const maxQueryRows = 500
 
+// dbMaskedPassword stands in for a configured password in db_connections.
+const dbMaskedPassword = "********"
+
+var errDBQueryRequired = errors.New("query is required")
+
 func dbConnections(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
-	p, err := resolveProject(ctx, req)
+	proj, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
-	p.envName = argString(args, "env")
+
+	proj.envName = argString(args, "env")
 
 	// Prefer the fully-parsed config/database.php (lists every connection).
-	if dbcfg, found, cerr := p.config("database"); cerr == nil && found {
-		note := ""
-		// If connections are defined via spreads/dynamic code, re-resolve the
-		// full set via PHP so none are omitted.
-		if p.evalLossy {
-			if pv, pf, perr := p.configViaPHP(ctx, "database"); perr == nil && pf {
-				dbcfg = pv
-			} else {
-				note = "some dynamically-defined connections may be omitted; PHP fallback unavailable"
-			}
-		}
-		if m, ok := dbcfg.(map[string]any); ok {
-			conns, _ := m["connections"].(map[string]any)
-			out := map[string]any{
-				"default":     m["default"],
-				"connections": maskConnections(conns),
-			}
-			if note != "" {
-				out["note"] = note
-			}
-			return jsonResult(ctx, out), nil
+	if out, ok := connectionsFromConfig(ctx, proj); ok {
+		return jsonResult(ctx, out), nil
+	}
+
+	return jsonResult(ctx, connectionsFromEnv(proj)), nil
+}
+
+// connectionsFromConfig lists every connection in config/database.php, with
+// passwords masked; false when the config can't be read.
+func connectionsFromConfig(ctx context.Context, proj *Project) (map[string]any, bool) {
+	dbcfg, found, err := proj.config(keyDatabase)
+	if err != nil || !found {
+		return nil, false
+	}
+
+	note := ""
+	// If connections are defined via spreads/dynamic code, re-resolve the
+	// full set via PHP so none are omitted.
+	if proj.evalLossy {
+		pv, phpFound, phpErr := proj.configViaPHP(ctx, keyDatabase)
+		if phpErr == nil && phpFound {
+			dbcfg = pv
+		} else {
+			note = "some dynamically-defined connections may be omitted; PHP fallback unavailable"
 		}
 	}
 
-	// Fallback: the active connection from .env.
-	masked := ""
-	if p.Env("DB_PASSWORD", "") != "" {
-		masked = "********"
+	cfgMap, ok := dbcfg.(map[string]any)
+	if !ok {
+		return nil, false
 	}
-	return jsonResult(ctx, map[string]any{
-		"default": p.Env("DB_CONNECTION", "mysql"),
+
+	out := map[string]any{
+		"default":     cfgMap["default"],
+		"connections": maskConnections(asMap(cfgMap["connections"])),
+	}
+	if note != "" {
+		out[keyNote] = note
+	}
+
+	return out, true
+}
+
+// connectionsFromEnv is the fallback: the active connection from .env.
+func connectionsFromEnv(proj *Project) map[string]any {
+	masked := ""
+	if proj.Env("DB_PASSWORD", "") != "" {
+		masked = dbMaskedPassword
+	}
+
+	conn := proj.Env("DB_CONNECTION", driverMySQL)
+
+	return map[string]any{
+		"default": conn,
 		"connections": map[string]any{
-			p.Env("DB_CONNECTION", "mysql"): map[string]any{
-				"driver":   p.Env("DB_CONNECTION", "mysql"),
-				"host":     p.Env("DB_HOST", ""),
-				"port":     p.Env("DB_PORT", ""),
-				"database": p.Env("DB_DATABASE", ""),
-				"username": p.Env("DB_USERNAME", ""),
-				"password": masked,
+			conn: map[string]any{
+				keyDriver:     conn,
+				dbKeyHost:     proj.Env("DB_HOST", ""),
+				dbKeyPort:     proj.Env("DB_PORT", ""),
+				keyDatabase:   proj.Env("DB_DATABASE", ""),
+				dbKeyUsername: proj.Env("DB_USERNAME", ""),
+				keyPassword:   masked,
 			},
 		},
-		"note": "config/database.php could not be read; showing the active connection from .env.",
-	}), nil
+		keyNote: "config/database.php could not be read; showing the active connection from .env.",
+	}
 }
 
 // maskConnections redacts password fields in each connection map.
 func maskConnections(conns map[string]any) map[string]any {
 	out := make(map[string]any, len(conns))
 	for name, v := range conns {
-		m, ok := v.(map[string]any)
+		settings, ok := v.(map[string]any)
 		if !ok {
 			out[name] = v
+
 			continue
 		}
-		cp := make(map[string]any, len(m))
-		for k, val := range m {
-			if k == "password" && val != nil && fmt.Sprint(val) != "" {
-				cp[k] = "********"
+
+		masked := make(map[string]any, len(settings))
+		for k, val := range settings {
+			if k == keyPassword && val != nil && fmt.Sprint(val) != "" {
+				masked[k] = dbMaskedPassword
 			} else {
-				cp[k] = val
+				masked[k] = val
 			}
 		}
-		out[name] = cp
+
+		out[name] = masked
 	}
+
 	return out
 }
 
 func dbSchema(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
-	p, err := resolveProject(ctx, req)
+	proj, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
-	p.envName = argString(args, "env")
-	db, driver, schema, err := p.openDBPinged(ctx, argString(args, "connection"))
+
+	proj.envName = argString(args, "env")
+
+	sqlDB, err := proj.openDBPinged(ctx, argString(args, keyConnection))
 	if err != nil {
 		return toolResult{}, err
 	}
-	defer func() { _ = db.Close() }()
 
-	prefix := cfgStr(p.resolveConnConfig(ctx, argString(args, "connection")), "prefix")
+	driver, schema := sqlDB.driver, sqlDB.schema
 
-	if table := argString(args, "table"); table != "" {
-		d, err := describeTable(ctx, db, driver, schema, table)
-		if err != nil {
-			return toolResult{}, err
+	defer func() { _ = sqlDB.Close() }()
+
+	prefix := cfgStr(proj.resolveConnConfig(ctx, argString(args, keyConnection)), keyPrefix)
+
+	if table := argString(args, keyTable); table != "" {
+		detail, describeErr := describeTableWithPrefix(ctx, sqlDB.DB, driver, schema, table, prefix)
+		if describeErr != nil {
+			return toolResult{}, describeErr
 		}
-		// Apps with a table prefix: retry with the prefix if the bare name
-		// matched nothing.
-		if prefix != "" && (d.Columns == nil || len(d.Columns.Rows) == 0) && !strings.HasPrefix(table, prefix) {
-			if pd, perr := describeTable(
-				ctx,
-				db,
-				driver,
-				schema,
-				prefix+table,
-			); perr == nil && pd.Columns != nil &&
-				len(pd.Columns.Rows) > 0 {
-				d = pd
-			}
-		}
-		return jsonResult(ctx, d), nil
+
+		return jsonResult(ctx, detail), nil
 	}
 
-	tables, err := listTables(ctx, db, driver, schema)
+	tables, err := listTables(ctx, sqlDB.DB, driver, schema)
 	if err != nil {
 		return toolResult{}, err
 	}
+
 	return jsonResult(ctx, struct {
 		Driver string   `json:"driver"`
 		Schema string   `json:"schema"`
@@ -136,45 +163,87 @@ func dbSchema(ctx context.Context, req *mcp.CallToolRequest, args map[string]any
 	}{driver, schema, prefix, tables, len(tables)}), nil
 }
 
+// describeTableWithPrefix describes table; for apps with a table prefix it
+// retries with the prefix if the bare name matched nothing.
+func describeTableWithPrefix(
+	ctx context.Context,
+	sqlDB *sql.DB,
+	driver, schema, table, prefix string,
+) (*tableDetail, error) {
+	detail, err := describeTable(ctx, sqlDB, driver, schema, table)
+	if err != nil {
+		return nil, err
+	}
+
+	if prefix == "" || hasColumns(detail) || strings.HasPrefix(table, prefix) {
+		return detail, nil
+	}
+
+	prefixed, err := describeTable(ctx, sqlDB, driver, schema, prefix+table)
+	if err == nil && hasColumns(prefixed) {
+		return prefixed, nil
+	}
+
+	return detail, nil
+}
+
+func hasColumns(detail *tableDetail) bool {
+	return detail.Columns != nil && len(detail.Columns.Rows) > 0
+}
+
 func dbQuery(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (toolResult, error) {
 	query := argString(args, "query")
 	if query == "" {
-		return toolResult{}, errors.New("query is required")
+		return toolResult{}, errDBQueryRequired
 	}
+
 	if ok, reason := isReadOnlyQuery(query); !ok {
 		return toolErrResult("Refused: " + reason +
 			". db_query only runs read-only statements " +
 			"(SELECT/SHOW/EXPLAIN/DESCRIBE/WITH/PRAGMA)."), nil
 	}
-	p, err := resolveProject(ctx, req)
-	if err != nil {
-		return toolResult{}, err
-	}
-	p.envName = argString(args, "env")
-	db, _, _, err := p.openDBPinged(ctx, argString(args, "connection"))
-	if err != nil {
-		return toolResult{}, err
-	}
-	defer func() { _ = db.Close() }()
 
-	res, err := queryRows(ctx, db, query)
+	proj, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
+
+	proj.envName = argString(args, "env")
+
+	sqlDB, err := proj.openDBPinged(ctx, argString(args, keyConnection))
+	if err != nil {
+		return toolResult{}, err
+	}
+
+	driver := sqlDB.driver
+
+	defer func() { _ = sqlDB.Close() }()
+
+	res, err := queryReadOnly(ctx, sqlDB.DB, driver, query)
+	if err != nil {
+		return toolResult{}, err
+	}
+
 	truncated := false
+
 	if len(res.Rows) > maxQueryRows {
 		res.Rows = res.Rows[:maxQueryRows]
 		res.Count = maxQueryRows
 		truncated = true
 	}
+
 	out := jsonResult(ctx, res)
 	if truncated {
-		out.Content = append(out.Content, contentBlock{Type: "text", Text: fmt.Sprintf("(truncated to first %d rows)", maxQueryRows)})
+		out.Content = append(
+			out.Content,
+			contentBlock{Type: contentText, Text: fmt.Sprintf("(truncated to first %d rows)", maxQueryRows)},
+		)
 	}
+
 	return out, nil
 }
 
 // toolErrResult is an isError result carrying a message (no Go error).
 func toolErrResult(msg string) toolResult {
-	return toolResult{Content: []contentBlock{{Type: "text", Text: msg}}, IsError: true}
+	return toolResult{Content: []contentBlock{{Type: contentText, Text: msg}}, IsError: true}
 }

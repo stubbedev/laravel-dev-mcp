@@ -17,26 +17,31 @@ type Config struct {
 	AuthToken string
 }
 
+// literalTrue is the canonical truthy spelling, in env vars and in the value
+// the flag package hands a bare boolean flag.
+const literalTrue = "true"
+
 func loadConfig() Config {
-	cfg := Config{
+	return Config{
 		PHPBin:    envOr("LARAVEL_MCP_PHP", "php"),
 		DocsURL:   envOr("LARAVEL_MCP_DOCS_URL", "https://boost.laravel.com"),
 		AuthToken: os.Getenv("LARAVEL_MCP_TOKEN"),
 	}
-	return cfg
 }
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return def
 }
 
 func truthy(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "1", "true", "yes", "on":
+	case "1", literalTrue, "yes", "on":
 		return true
 	}
+
 	return false
 }

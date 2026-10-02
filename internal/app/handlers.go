@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -12,17 +12,20 @@ import (
 // phpVersion returns the runtime PHP version (e.g. "8.3.10"), or "" if php is
 // unavailable.
 func phpVersion(ctx context.Context, root string) string {
+	//nolint:gosec // G204: the php binary is the user's own LARAVEL_MCP_PHP setting; the script is a constant
 	cmd := exec.CommandContext(ctx, cfg.PHPBin, "-r", "echo PHP_VERSION;")
 	cmd.Dir = root
+
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
+
 	return strings.TrimSpace(string(out))
 }
 
 func appInfo(ctx context.Context, req *mcp.CallToolRequest) (toolResult, error) {
-	p, err := resolveProject(ctx, req)
+	proj, err := resolveProject(ctx, req)
 	if err != nil {
 		return toolResult{}, err
 	}
@@ -31,6 +34,7 @@ func appInfo(ctx context.Context, req *mcp.CallToolRequest) (toolResult, error) 
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	}
+
 	info := struct {
 		Root           string `json:"root"`
 		PHPVersion     string `json:"php_version,omitempty"`
@@ -41,26 +45,31 @@ func appInfo(ctx context.Context, req *mcp.CallToolRequest) (toolResult, error) 
 		Telescope      bool   `json:"telescope_installed"`
 		Packages       []pkg  `json:"packages"`
 	}{
-		Root:      p.Root,
-		AppName:   p.Env("APP_NAME", ""),
-		AppEnv:    p.Env("APP_ENV", ""),
-		AppDebug:  p.Env("APP_DEBUG", ""),
-		Telescope: p.hasPackage("laravel/telescope"),
+		Root:           proj.Root,
+		PHPVersion:     phpVersion(ctx, proj.Root),
+		LaravelVersion: "", // from composer.lock below
+		AppName:        proj.Env("APP_NAME", ""),
+		AppEnv:         proj.Env("APP_ENV", ""),
+		AppDebug:       proj.Env("APP_DEBUG", ""),
+		Telescope:      proj.hasPackage("laravel/telescope"),
+		Packages:       nil,
 	}
 
-	info.PHPVersion = phpVersion(ctx, p.Root)
-
-	if cl, err := p.composerLock(); err == nil {
-		for _, c := range cl.Packages {
-			if c.Name == "laravel/framework" {
-				info.LaravelVersion = c.Version
+	lock, lockErr := proj.composerLock()
+	if lockErr == nil {
+		for _, lockPkg := range lock.Packages {
+			if lockPkg.Name == "laravel/framework" {
+				info.LaravelVersion = lockPkg.Version
 			}
-			info.Packages = append(info.Packages, pkg(c))
+
+			info.Packages = append(info.Packages, pkg(lockPkg))
 		}
-		for _, c := range cl.PackagesDev {
-			info.Packages = append(info.Packages, pkg(c))
+
+		for _, lockPkg := range lock.PackagesDev {
+			info.Packages = append(info.Packages, pkg(lockPkg))
 		}
-		sort.Slice(info.Packages, func(i, j int) bool { return info.Packages[i].Name < info.Packages[j].Name })
+
+		slices.SortFunc(info.Packages, func(a, b pkg) int { return strings.Compare(a.Name, b.Name) })
 	}
 
 	return jsonResult(ctx, info), nil
