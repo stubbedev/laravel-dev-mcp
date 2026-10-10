@@ -2,6 +2,8 @@ module github.com/stubbedev/laravel-dev-mcp
 
 go 1.27.1
 
+toolchain go1.27.2
+
 require (
 	github.com/VKCOM/php-parser v0.8.2
 	github.com/go-sql-driver/mysql v1.10.1
