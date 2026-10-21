@@ -79,6 +79,13 @@ the relative path keeps the committed `.mcp.json` working for every teammate who
 runs `composer install`. Set `LARAVEL_MCP_SKIP_DOWNLOAD=1` to skip the fetch and
 the `.mcp.json` write.
 
+npm and Composer download each release's binary once per user, into
+`$XDG_CACHE_HOME/laravel-dev-mcp/<version>/` (by default `~/.cache` on Linux,
+`~/Library/Caches` on macOS), and hardlink it into every install, or copy it
+where the install is on another filesystem. Further projects and git worktrees
+on the same version install without downloading anything. Delete old version
+directories to reclaim their space; installs keep their own link.
+
 Homebrew:
 
 ```sh
