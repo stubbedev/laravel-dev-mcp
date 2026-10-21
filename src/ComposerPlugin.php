@@ -63,9 +63,11 @@ final class ComposerPlugin implements PluginInterface, EventSubscriberInterface
         $data = [];
         if (is_file($configPath)) {
             $decoded = json_decode((string) file_get_contents($configPath), true);
-            if (is_array($decoded)) {
-                $data = $decoded;
+            if (!is_array($decoded)) {
+                $this->io->writeError("<warning>[laravel-dev-mcp] {$configPath} is not a JSON object; add {\"mcpServers\": {\"laravel-dev\": {\"command\": \"{$command}\"}}} yourself.</warning>");
+                return;
             }
+            $data = $decoded;
         }
         if (($data['mcpServers']['laravel-dev']['command'] ?? null) === $command) {
             return; // already configured — avoid rewriting the file
