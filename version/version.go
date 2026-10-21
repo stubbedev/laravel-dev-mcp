@@ -1,5 +1,5 @@
 // Package version holds the build version, overridden via -ldflags at release
-// time (see package.nix and .github/workflows/release.yml).
+// time (see nix/package.nix and .github/workflows/release.yml).
 package version
 
 // Version is the server version. Defaults to "dev"; release builds set it via

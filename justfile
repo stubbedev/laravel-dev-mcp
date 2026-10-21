@@ -4,7 +4,7 @@
 default:
     @just --list
 
-# Run every release gate in order: vet, lint, test, build, then keep package.nix's vendorHash in sync.
+# Run every release gate in order: vet, lint, test, build, then keep nix/package.nix's vendorHash in sync.
 check: vet lint test build sync-flake
 
 # Static analysis of every package with go vet.
@@ -31,9 +31,9 @@ fmt:
 nix-check:
     nix flake check --print-build-logs
 
-# A sha256 of go.sum is cached as a `# go-sum:` line in package.nix; when it
+# A sha256 of go.sum is cached as a `# go-sum:` line in nix/package.nix; when it
 # matches, this returns immediately. `--force` recomputes regardless.
-# Align package.nix's vendorHash with go.sum; pass a version to also set the package version.
+# Align nix/package.nix's vendorHash with go.sum; pass a version to also set the package version.
 sync-flake version="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -47,8 +47,8 @@ sync-flake version="":
     esac
 
     GO_SUM_HASH=$(sha256sum go.sum | awk '{print $1}')
-    CACHED_HASH=$(awk -F': ' '/^[[:space:]]*#[[:space:]]*go-sum:/ {print $2; exit}' package.nix | tr -d ' ')
-    CURRENT_VERSION=$(awk -F'"' '/^[[:space:]]*version = "/ {print $2; exit}' package.nix)
+    CACHED_HASH=$(awk -F': ' '/^[[:space:]]*#[[:space:]]*go-sum:/ {print $2; exit}' nix/package.nix | tr -d ' ')
+    CURRENT_VERSION=$(awk -F'"' '/^[[:space:]]*version = "/ {print $2; exit}' nix/package.nix)
 
     NEED_HASH=0
     NEED_VERSION=0
@@ -64,7 +64,7 @@ sync-flake version="":
 
     if [ "$NEED_HASH" = "1" ]; then
         SENTINEL="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' package.nix
+        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$SENTINEL"'";|' nix/package.nix
         set +e
         OUT=$(nix build .#laravel-dev-mcp --no-link 2>&1)
         BUILD_STATUS=$?
@@ -80,22 +80,22 @@ sync-flake version="":
             echo "sync-flake: nix build failed without printing 'got: sha256-…'" >&2
             exit 1
         fi
-        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' package.nix
-        if grep -q '^[[:space:]]*# go-sum:' package.nix; then
-            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' package.nix
+        sed -i -E 's|^(\s*vendorHash = )"sha256-[^"]*";|\1"'"$NEW_HASH"'";|' nix/package.nix
+        if grep -q '^[[:space:]]*# go-sum:' nix/package.nix; then
+            sed -i -E 's|^(\s*# go-sum:).*|\1 '"$GO_SUM_HASH"'|' nix/package.nix
         else
-            sed -i -E 's|^(\s*vendorHash = )|  # go-sum: '"$GO_SUM_HASH"'\n\1|' package.nix
+            sed -i -E 's|^(\s*)(vendorHash = )|\1# go-sum: '"$GO_SUM_HASH"'\n\1\2|' nix/package.nix
         fi
         echo "sync-flake: vendorHash=$NEW_HASH go-sum=$GO_SUM_HASH"
     fi
 
-    if grep -q '^\s*vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' package.nix; then
-        echo "sync-flake: refusing to leave sentinel vendorHash in package.nix" >&2
+    if grep -q '^\s*vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' nix/package.nix; then
+        echo "sync-flake: refusing to leave sentinel vendorHash in nix/package.nix" >&2
         exit 1
     fi
 
     if [ "$NEED_VERSION" = "1" ]; then
-        sed -i -E 's|^(\s*version = )"[^"]*";|\1"'"$VERSION"'";|' package.nix
+        sed -i -E 's|^(\s*version = )"[^"]*";|\1"'"$VERSION"'";|' nix/package.nix
         echo "sync-flake: version=$VERSION"
     fi
 
@@ -152,8 +152,8 @@ _release bump:
     # Keep the npm wrapper's version in lockstep — the release workflow's npm
     # job refuses to publish if package.json doesn't match the tag.
     sed -i -E 's|^(\s*"version": )"[^"]*",|\1"'"${NEW}"'",|' package.json
-    if [ -n "$(git status --porcelain package.nix package.json)" ]; then
-        git add package.nix package.json
+    if [ -n "$(git status --porcelain nix/package.nix package.json)" ]; then
+        git add nix/package.nix package.json
         git commit -m "chore: bump to v${NEW}"
     fi
     git tag -a "v${NEW}" -m "v${NEW}"

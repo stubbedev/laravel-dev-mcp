@@ -175,7 +175,7 @@ Requires Laravel Telescope (degrades gracefully when absent):
 ## Development
 
 ```sh
-just check    # every gate in order: vet, lint, test, build, sync package.nix vendorHash
+just check    # every gate in order: vet, lint, test, build, sync nix/package.nix vendorHash
 just vet      # go vet ./...
 just lint     # golangci-lint run (config in .golangci.yml)
 just test     # go test ./...
@@ -189,8 +189,8 @@ are off, in favour of their replacements). An intentional exception is a
 
 Every dev tool (Go pinned to the version go.mod declares, gopls,
 golangci-lint, delve, just, git, gh) comes from the flake: `nix develop`, or
-`direnv allow` with a `use flake` `.envrc`. The shell sets `GOTOOLCHAIN=local`
-and `CGO_ENABLED=0`. The package itself lives in `package.nix`; after a
+`direnv allow` (the tracked `.envrc` runs `use flake`). The shell sets `GOTOOLCHAIN=local`
+and `CGO_ENABLED=0`. The package itself lives in `nix/package.nix`; after a
 dependency change, `just sync-flake` refreshes its `vendorHash`.
 
 CI runs build/test/lint and the nix check (`ci.yml`), plus CodeQL, Grype,
