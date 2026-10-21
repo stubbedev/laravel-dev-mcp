@@ -14,7 +14,6 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'));
 const PLATFORMS = {
   'linux:x64': { os: 'linux', arch: 'amd64', ext: '' },
   'linux:arm64': { os: 'linux', arch: 'arm64', ext: '' },
-  'darwin:x64': { os: 'darwin', arch: 'amd64', ext: '' },
   'darwin:arm64': { os: 'darwin', arch: 'arm64', ext: '' },
 };
 
