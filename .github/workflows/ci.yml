@@ -145,7 +145,7 @@ jobs:
       # source, so the step fails the job.
       - name: setup xilo
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: stubbedev/xilo@4528483a1a261f5ed6578606d30526c6a908d1b4 # v1.2.2
+        uses: stubbedev/xilo@dd96cb09f7781ceccd534af338a36853c80f7193 # v1.2.6
         with:
           url: https://nix.stubbe.dev
           cache: default
