@@ -28,8 +28,8 @@
         # is reproducible. Bump after any `go get` / `go mod tidy` that changes
         # go.sum: `nix build` prints the expected hash on mismatch, or run
         # `just sync-flake`.
-        # go-sum: 9b5282025b229dbff586348567b634e09cdb2edfa736acced49d90b0a9470c67
-        vendorHash = "sha256-cz2Kqm983dF2VGP1gDhYXQoqt6QIwh+4QMQtaEcmfG4=";
+        # go-sum: c55efcdc8ed4eb591abfc03b78dc27ddfb3c029de18abef2c5033623279f0050
+        vendorHash = "sha256-nDyB1SEUNLtc2Q76VOA9SSk1W7MJeQGPo65+ZIZh4AE=";
 
         subPackages = ["."];
 
