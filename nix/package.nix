@@ -1,5 +1,6 @@
 {
   perSystem = {
+    inputs',
     lib,
     pkgs,
     self',
@@ -7,7 +8,7 @@
   }: {
     packages = {
       default = self'.packages.laravel-dev-mcp;
-      laravel-dev-mcp = pkgs.buildGo127Module rec {
+      laravel-dev-mcp = (pkgs.buildGoModule.override {go = inputs'.devtools.packages.go;}) rec {
         pname = "laravel-dev-mcp";
         # Release-managed: `just sync-flake <version>` rewrites this on a tag bump.
         version = "0.0.17";
