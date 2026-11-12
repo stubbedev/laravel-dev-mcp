@@ -2,7 +2,7 @@ module github.com/stubbedev/laravel-dev-mcp
 
 go 1.27.1
 
-toolchain go1.27.2
+toolchain go1.27.4
 
 require (
 	github.com/VKCOM/php-parser v0.8.2
