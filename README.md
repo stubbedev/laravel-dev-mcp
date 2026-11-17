@@ -94,7 +94,7 @@ brew tap stubbedev/tap
 brew install stubbedev/tap/laravel-dev-mcp
 ```
 
-Nix (binary cache at `nix.stubbe.dev`):
+Nix (binary cache at `xilos.dev`):
 
 ```sh
 nix run github:stubbedev/laravel-dev-mcp
